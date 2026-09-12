@@ -108,11 +108,12 @@ class PlanDetailViewModel(
         rows += listOf("总体说明", plan.overview)
         rows += listOf("生成模型", plan.configName)
         rows += listOf("")
-        rows += listOf("阶段", "任务", "学习方法", "推荐资源", "预计时长(分钟)", "进度(%)", "状态")
+        rows += listOf("阶段", "任务", "学什么", "怎么做", "交付物", "达标标准", "常见坑", "推荐资源", "预计时长(分钟)", "进度(%)", "状态")
         u.phases.forEach { phase ->
             phase.tasks.forEach { t ->
                 rows += listOf(
-                    phase.phase.title, t.title, t.method, t.resource,
+                    phase.phase.title, t.title, t.detail, t.method, t.deliverable,
+                    t.checkpoint, t.pitfall, t.resource,
                     t.estimatedMinutes, t.progress,
                     when {
                         t.progress >= 100 -> "已完成"

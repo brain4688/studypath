@@ -25,10 +25,10 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.studypath.app.ui.chat.ChatScreen
+import com.studypath.app.ui.chat.ChatViewModel
 import com.studypath.app.ui.home.HomeScreen
 import com.studypath.app.ui.home.HomeViewModel
-import com.studypath.app.ui.newplan.NewPlanScreen
-import com.studypath.app.ui.newplan.NewPlanViewModel
 import com.studypath.app.ui.plan.PlanDetailScreen
 import com.studypath.app.ui.plan.PlanDetailViewModel
 import com.studypath.app.ui.settings.SettingsScreen
@@ -47,7 +47,7 @@ class MainActivity : ComponentActivity() {
 
 object Routes {
     const val HOME = "home"
-    const val NEW_PLAN = "newplan"
+    const val CHAT = "chat"
     const val SETTINGS = "settings"
     const val PLAN_DETAIL = "plan/{planId}"
     fun planDetail(planId: Long) = "plan/$planId"
@@ -59,15 +59,23 @@ fun AppNavGraph(container: AppContainer = (LocalContext.current.applicationConte
     val navController = rememberNavController()
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route
-    val showTopBar = currentRoute in setOf(Routes.HOME, Routes.SETTINGS)
+    val showTopBar = currentRoute in setOf(Routes.HOME, Routes.SETTINGS, Routes.CHAT)
 
     Scaffold(
         topBar = {
             if (showTopBar) {
                 TopAppBar(
-                    title = { Text(if (currentRoute == Routes.SETTINGS) "模型设置" else "StudyPath 智学规划") },
+                    title = {
+                        Text(
+                            when (currentRoute) {
+                                Routes.SETTINGS -> "模型设置"
+                                Routes.CHAT -> "AI 学习规划师"
+                                else -> "StudyPath 智学规划"
+                            }
+                        )
+                    },
                     navigationIcon = {
-                        if (currentRoute == Routes.SETTINGS) {
+                        if (currentRoute != Routes.HOME) {
                             IconButton(onClick = { navController.popBackStack() }) {
                                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                             }
@@ -86,18 +94,17 @@ fun AppNavGraph(container: AppContainer = (LocalContext.current.applicationConte
                 val vm: HomeViewModel = viewModel(initializer = { HomeViewModel(container.repository) })
                 HomeScreen(
                     viewModel = vm,
-                    onNewPlan = { navController.navigate(Routes.NEW_PLAN) },
+                    onNewPlan = { navController.navigate(Routes.CHAT) },
                     onOpenPlan = { navController.navigate(Routes.planDetail(it)) },
                     onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                 )
             }
-            composable(Routes.NEW_PLAN) {
-                val vm: NewPlanViewModel = viewModel(initializer = {
-                    NewPlanViewModel(container.repository, container.aiClient)
+            composable(Routes.CHAT) {
+                val vm: ChatViewModel = viewModel(initializer = {
+                    ChatViewModel(container.repository, container.aiClient)
                 })
-                NewPlanScreen(
+                ChatScreen(
                     viewModel = vm,
-                    onBack = { navController.popBackStack() },
                     onCreated = { planId ->
                         navController.popBackStack()
                         navController.navigate(Routes.planDetail(planId))

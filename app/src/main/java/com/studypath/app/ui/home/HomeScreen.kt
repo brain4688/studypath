@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -84,7 +85,7 @@ fun HomeScreen(
             ExtendedFloatingActionButton(
                 onClick = onNewPlan,
                 icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                text = { Text("新建学习计划") },
+                text = { Text("AI 规划学习") },
             )
         },
     ) { padding ->
@@ -94,21 +95,27 @@ fun HomeScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("让 AI 为你规划每一段学习", style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            text = defaultConfig?.let { "当前模型：${it.name} · ${it.model}" }
-                                ?: "尚未配置模型，请先在设置中添加",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    IconButton(onClick = { showImportDialog = true }) {
-                        Icon(Icons.Default.UploadFile, contentDescription = "导入计划")
-                    }
-                    IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = "模型设置")
+                Column {
+                    Text(
+                        "STUDYPATH · 让 AI 为你规划每一段学习",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.tertiary,
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                defaultConfig?.let { "当前模型：${it.name} · ${it.model}" }
+                                    ?: "尚未配置模型，请先在设置中添加",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        IconButton(onClick = { showImportDialog = true }) {
+                            Icon(Icons.Default.UploadFile, contentDescription = "导入计划")
+                        }
+                        IconButton(onClick = onOpenSettings) {
+                            Icon(Icons.Default.Settings, contentDescription = "模型设置")
+                        }
                     }
                 }
             }
@@ -158,32 +165,67 @@ private fun EmptyHint(hasConfig: Boolean, onOpenSettings: () -> Unit) {
 @Composable
 private fun PlanCardItem(card: PlanCard, onClick: () -> Unit) {
     val dateText = remember(card.plan.createdAt) {
-        SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(card.plan.createdAt))
+        SimpleDateFormat("yyyy.MM.dd", Locale.getDefault()).format(Date(card.plan.createdAt))
     }
-    Card(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(card.plan.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Spacer(Modifier.height(4.dp))
+    Card(
+        onClick = onClick,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(15.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    dateText,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.width(9.dp))
+                Card(
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(99.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                ) {
+                    Text(
+                        "计划",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                    )
+                }
+            }
+            Text(
+                card.plan.title,
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 6.dp),
+            )
             Text(
                 card.plan.goal,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 4.dp),
             )
             Spacer(Modifier.height(12.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                LinearProgressIndicator(
-                    progress = { card.percent / 100f },
+                com.studypath.app.ui.theme.PaperProgressBar(
+                    percent = card.percent,
                     modifier = Modifier.weight(1f),
                 )
-                Spacer(Modifier.width(8.dp))
-                Text("${card.percent}%", style = MaterialTheme.typography.labelLarge)
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    "${card.percent}%",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(6.dp))
             Text(
-                "$dateText · 总时长约 ${card.totalMinutes / 60} 小时",
-                style = MaterialTheme.typography.bodySmall,
+                "总时长约 ${card.totalMinutes / 60} 小时",
+                style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -195,10 +237,19 @@ private val IMPORT_EXAMPLE = """{
   "overview": "从零基础到能写小工具",
   "phases": [
     {
-      "title": "第一阶段：基础语法",
+      "title": "第1周 · 基础语法",
       "summary": "变量、控制流、函数",
       "tasks": [
-        { "title": "学习变量与类型", "method": "看教程后写示例", "resource": "官方文档", "estimatedMinutes": 60 }
+        {
+          "title": "刷完官方教程变量与类型章节并写 10 个示例",
+          "detail": "int/float/str/bool 与类型转换；f-string 格式化；动态类型与不可变性",
+          "method": "先读官方教程 30 分钟；再在 REPL 里逐个敲示例；最后写一篇笔记",
+          "deliverable": "一篇含 10 个可运行示例的笔记（Markdown）",
+          "checkpoint": "能不看资料写出字符串与数字互转的 3 种写法",
+          "pitfall": "别只看不练，示例必须亲手敲一遍",
+          "resource": "Python 官方教程 docs.python.org/zh-cn/3/tutorial",
+          "estimatedMinutes": 90
+        }
       ]
     }
   ]

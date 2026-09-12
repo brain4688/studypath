@@ -44,6 +44,15 @@ data class PhaseEntity(
     val orderIndex: Int,
 )
 
+/** 与 AI 规划师的聊天记录 */
+@Entity(tableName = "chat_messages")
+data class ChatMessageEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val role: String,          // "user" / "assistant"
+    val content: String,
+    val createdAt: Long = System.currentTimeMillis(),
+)
+
 /**
  * 小任务：progress 取 0..100，支持"部分完成"。
  * 总进度 = Σ(estimatedMinutes × progress) / Σ(estimatedMinutes)，按预估时长加权。
@@ -61,8 +70,12 @@ data class TaskEntity(
     val phaseId: Long,
     val planId: Long,
     val title: String,
-    val method: String,        // 学习方法建议
-    val resource: String,      // 推荐学习资源
+    val detail: String = "",      // 具体学什么/做什么（知识点、题目范围）
+    val method: String = "",      // 学习方法/执行步骤
+    val deliverable: String = "", // 交付物
+    val checkpoint: String = "",  // 达标标准
+    val pitfall: String = "",     // 常见坑
+    val resource: String = "",    // 推荐学习资源
     val estimatedMinutes: Int,
     val progress: Int = 0,     // 0..100
     val orderIndex: Int,

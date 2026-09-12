@@ -3,6 +3,8 @@ package com.studypath.app.data.repo
 import com.studypath.app.core.ProgressCalculator
 import com.studypath.app.data.db.ApiConfigDao
 import com.studypath.app.data.db.ApiConfigEntity
+import com.studypath.app.data.db.ChatDao
+import com.studypath.app.data.db.ChatMessageEntity
 import com.studypath.app.data.db.PhaseDao
 import com.studypath.app.data.db.PhaseEntity
 import com.studypath.app.data.db.PhaseWithTasks
@@ -31,6 +33,7 @@ class PlanRepository(
     private val phaseDao: PhaseDao,
     private val taskDao: TaskDao,
     private val configDao: ApiConfigDao,
+    private val chatDao: ChatDao,
 ) {
     // ---------- 查询 ----------
 
@@ -98,7 +101,11 @@ class PlanRepository(
                         phaseId = phaseId,
                         planId = planId,
                         title = t.title,
+                        detail = t.detail,
                         method = t.method,
+                        deliverable = t.deliverable,
+                        checkpoint = t.checkpoint,
+                        pitfall = t.pitfall,
                         resource = t.resource,
                         estimatedMinutes = t.estimatedMinutes.coerceAtLeast(5),
                         progress = (t.progress ?: 0).coerceIn(0, 100),
@@ -113,6 +120,17 @@ class PlanRepository(
 
     suspend fun setTaskProgress(taskId: Long, progress: Int) =
         taskDao.setProgress(taskId, progress.coerceIn(0, 100))
+
+    // ---------- 聊天（AI 规划师） ----------
+
+    fun observeChat(): Flow<List<ChatMessageEntity>> = chatDao.observeAll()
+
+    suspend fun addChatMessage(role: String, content: String) =
+        chatDao.insert(ChatMessageEntity(role = role, content = content))
+
+    suspend fun clearChat() = chatDao.clear()
+
+    suspend fun chatCount(): Int = chatDao.count()
 
     // ---------- 配置 ----------
 
@@ -138,7 +156,12 @@ class PlanRepository(
                 AiPhase(
                     title = p.phase.title,
                     summary = p.phase.summary,
-                    tasks = p.tasks.map { AiTask(it.title, it.method, it.resource, it.estimatedMinutes, it.progress) },
+                    tasks = p.tasks.map {
+                        AiTask(
+                            it.title, it.detail, it.method, it.deliverable,
+                            it.checkpoint, it.pitfall, it.resource, it.estimatedMinutes, it.progress,
+                        )
+                    },
                 )
             },
         )

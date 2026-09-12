@@ -46,6 +46,21 @@ interface ApiConfigDao {
 }
 
 @Dao
+interface ChatDao {
+    @Query("SELECT * FROM chat_messages ORDER BY createdAt ASC, id ASC")
+    fun observeAll(): Flow<List<ChatMessageEntity>>
+
+    @Insert
+    suspend fun insert(message: ChatMessageEntity): Long
+
+    @Query("DELETE FROM chat_messages")
+    suspend fun clear()
+
+    @Query("SELECT COUNT(*) FROM chat_messages")
+    suspend fun count(): Int
+}
+
+@Dao
 interface PlanDao {
     @Query("SELECT * FROM plans ORDER BY createdAt DESC")
     fun observeAll(): Flow<List<PlanEntity>>

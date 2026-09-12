@@ -46,22 +46,22 @@ class AiClient {
 
     /** 发送一轮对话，返回模型输出的文本内容 */
     suspend fun complete(config: ApiConfigEntity, system: String, user: String): Result<String> =
+        complete(config, listOf(ChatMessage("system", system), ChatMessage("user", user)))
+
+    /** 发送多轮对话（聊天场景），返回模型输出的文本内容 */
+    suspend fun complete(config: ApiConfigEntity, messages: List<ChatMessage>): Result<String> =
         withContext(Dispatchers.IO) {
             runCatching {
                 val resp = apiFor(config.baseUrl).chat(
                     authorization = "Bearer ${config.apiKey.trim()}",
                     request = ChatRequest(
                         model = config.model,
-                        messages = listOf(
-                            ChatMessage("system", system),
-                            ChatMessage("user", user),
-                        ),
+                        messages = messages,
                     ),
                 )
                 resp.error?.message?.let { error(it) }
-                val content = resp.choices.firstOrNull()?.message?.content
+                resp.choices.firstOrNull()?.message?.content
                     ?: error("模型未返回内容（choices 为空，请检查模型名称是否正确）")
-                content
             }
         }
 

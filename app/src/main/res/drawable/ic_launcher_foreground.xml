@@ -10,14 +10,14 @@
             android:pathData="M54,20 L96,32 V84 L54,72 L12,84 V32 Z" />
         <!-- 上升折线（学习进度） -->
         <path
-            android:strokeColor="#1E6BFF"
+            android:strokeColor="#E2EDE8"
             android:strokeWidth="6"
             android:strokeLineCap="round"
             android:strokeLineJoin="round"
             android:fillColor="#00000000"
             android:pathData="M24,62 L42,48 L54,56 L84,34" />
         <path
-            android:fillColor="#1E6BFF"
+            android:fillColor="#E2EDE8"
             android:pathData="M84,34 L74,34 L84,44 Z" />
     </group>
 </vector>
