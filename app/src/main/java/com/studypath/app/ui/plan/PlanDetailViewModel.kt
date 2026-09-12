@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.studypath.app.core.PlanParser
 import com.studypath.app.core.ai.PlanPrompts
+import com.studypath.app.core.export.XlsxWriter
 import com.studypath.app.data.api.AiClient
 import com.studypath.app.data.db.ApiConfigEntity
 import com.studypath.app.data.db.PhaseWithTasks
@@ -95,5 +96,42 @@ class PlanDetailViewModel(
         if (_replanState.value is ReplanState.Done || _replanState.value is ReplanState.Error) {
             _replanState.value = ReplanState.Idle
         }
+    }
+
+    /** 导出当前计划为 .xlsx 字节流（纯 Kotlin 生成，无第三方依赖） */
+    fun exportXlsx(): ByteArray? {
+        val u = ui.value
+        val plan = u.plan ?: return null
+        val rows = mutableListOf<List<Any>>()
+        rows += listOf("计划标题", plan.title)
+        rows += listOf("学习目标", plan.goal)
+        rows += listOf("总体说明", plan.overview)
+        rows += listOf("生成模型", plan.configName)
+        rows += listOf("")
+        rows += listOf("阶段", "任务", "学习方法", "推荐资源", "预计时长(分钟)", "进度(%)", "状态")
+        u.phases.forEach { phase ->
+            phase.tasks.forEach { t ->
+                rows += listOf(
+                    phase.phase.title, t.title, t.method, t.resource,
+                    t.estimatedMinutes, t.progress,
+                    when {
+                        t.progress >= 100 -> "已完成"
+                        t.progress > 0 -> "进行中"
+                        else -> "未开始"
+                    },
+                )
+            }
+        }
+        val totalMinutes = u.phases.sumOf { p -> p.tasks.sumOf { it.estimatedMinutes } }
+        rows += listOf("")
+        rows += listOf("合计", "${u.phases.sumOf { it.tasks.size }} 个任务", "", "", totalMinutes, u.percent, "")
+        return XlsxWriter.write(plan.title, rows)
+    }
+
+    /** 导出当前计划为可再导入的 JSON（含任务进度，作为备份/分享格式） */
+    fun exportJson(): String? {
+        val u = ui.value
+        val plan = u.plan ?: return null
+        return repository.planToJson(plan, u.phases)
     }
 }

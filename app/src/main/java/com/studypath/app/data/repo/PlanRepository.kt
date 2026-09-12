@@ -11,7 +11,9 @@ import com.studypath.app.data.db.PlanEntity
 import com.studypath.app.data.db.PlanProgressRow
 import com.studypath.app.data.db.TaskDao
 import com.studypath.app.data.db.TaskEntity
+import com.studypath.app.core.ai.AiPhase
 import com.studypath.app.core.ai.AiPlan
+import com.studypath.app.core.ai.AiTask
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
@@ -99,6 +101,7 @@ class PlanRepository(
                         method = t.method,
                         resource = t.resource,
                         estimatedMinutes = t.estimatedMinutes.coerceAtLeast(5),
+                        progress = (t.progress ?: 0).coerceIn(0, 100),
                         orderIndex = taskIdx,
                     )
                 }
@@ -125,4 +128,26 @@ class PlanRepository(
     suspend fun deleteConfig(config: ApiConfigEntity) = configDao.delete(config)
 
     suspend fun deletePlan(planId: Long) = planDao.deleteById(planId)
+
+    /** 导出为可再导入的 JSON（含各任务进度，可作为备份/分享格式） */
+    fun planToJson(plan: PlanEntity, phases: List<PhaseWithTasks>): String {
+        val aiPlan = AiPlan(
+            title = plan.title,
+            overview = plan.overview,
+            phases = phases.map { p ->
+                AiPhase(
+                    title = p.phase.title,
+                    summary = p.phase.summary,
+                    tasks = p.tasks.map { AiTask(it.title, it.method, it.resource, it.estimatedMinutes, it.progress) },
+                )
+            },
+        )
+        return exportJson.encodeToString(AiPlan.serializer(), aiPlan)
+    }
+}
+
+private val exportJson = kotlinx.serialization.json.Json {
+    encodeDefaults = true
+    prettyPrint = true
+    ignoreUnknownKeys = true
 }

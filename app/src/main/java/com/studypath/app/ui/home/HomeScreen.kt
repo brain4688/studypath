@@ -1,5 +1,8 @@
 package com.studypath.app.ui.home
 
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,9 +16,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -25,14 +32,22 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -51,6 +66,18 @@ fun HomeScreen(
 ) {
     val plans by viewModel.plans.collectAsStateWithLifecycle()
     val defaultConfig by viewModel.defaultConfig.collectAsStateWithLifecycle()
+    val importState by viewModel.importState.collectAsStateWithLifecycle()
+
+    var showImportDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(importState) {
+        val s = importState
+        if (s is ImportState.Success) {
+            viewModel.consumeImportState()
+            showImportDialog = false
+            onOpenPlan(s.planId)
+        }
+    }
 
     Scaffold(
         floatingActionButton = {
@@ -77,6 +104,9 @@ fun HomeScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                    IconButton(onClick = { showImportDialog = true }) {
+                        Icon(Icons.Default.UploadFile, contentDescription = "导入计划")
+                    }
                     IconButton(onClick = onOpenSettings) {
                         Icon(Icons.Default.Settings, contentDescription = "模型设置")
                     }
@@ -91,6 +121,15 @@ fun HomeScreen(
                 }
             }
         }
+    }
+
+    if (showImportDialog) {
+        ImportPlanDialog(
+            state = importState,
+            onDismiss = { showImportDialog = false },
+            onImport = viewModel::importPlan,
+            onConsumeError = viewModel::consumeImportState,
+        )
     }
 }
 
@@ -149,4 +188,88 @@ private fun PlanCardItem(card: PlanCard, onClick: () -> Unit) {
             )
         }
     }
+}
+
+private val IMPORT_EXAMPLE = """{
+  "title": "Python 入门四周计划",
+  "overview": "从零基础到能写小工具",
+  "phases": [
+    {
+      "title": "第一阶段：基础语法",
+      "summary": "变量、控制流、函数",
+      "tasks": [
+        { "title": "学习变量与类型", "method": "看教程后写示例", "resource": "官方文档", "estimatedMinutes": 60 }
+      ]
+    }
+  ]
+}"""
+
+@Composable
+private fun ImportPlanDialog(
+    state: ImportState,
+    onDismiss: () -> Unit,
+    onImport: (String) -> Unit,
+    onConsumeError: () -> Unit,
+) {
+    val context = LocalContext.current
+    var text by remember { mutableStateOf("") }
+    var showExample by remember { mutableStateOf(false) }
+
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+            }.fold(
+                onSuccess = { text = it ?: "" },
+                onFailure = { Toast.makeText(context, "读取文件失败：${it.message}", Toast.LENGTH_SHORT).show() },
+            )
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("导入学习计划") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "粘贴 JSON 计划（可从本 App 导出的 JSON、或其他 AI 生成的同格式 JSON 导入），也可选择 .json 文件。",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    placeholder = { Text("在此粘贴 JSON…") },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 5,
+                    maxLines = 10,
+                    textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                )
+                TextButton(onClick = { filePicker.launch(arrayOf("application/json", "text/*", "*/*")) }) {
+                    Text("选择 .json 文件")
+                }
+                TextButton(onClick = { showExample = !showExample }) {
+                    Text(if (showExample) "收起格式示例" else "查看格式示例")
+                }
+                if (showExample) {
+                    Text(
+                        IMPORT_EXAMPLE,
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.verticalScroll(rememberScrollState()).height(180.dp),
+                    )
+                }
+                if (state is ImportState.Error) {
+                    Text(
+                        state.message,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onImport(text) }) { Text("导入") }
+        },
+        dismissButton = { TextButton(onClick = { onDismiss(); onConsumeError() }) { Text("取消") } },
+    )
 }

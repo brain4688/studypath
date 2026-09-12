@@ -1,5 +1,8 @@
 package com.studypath.app.ui.plan
 
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.SaveAlt
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
@@ -37,14 +41,19 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.studypath.app.data.db.PhaseWithTasks
 import com.studypath.app.data.db.TaskEntity
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -58,6 +67,7 @@ fun PlanDetailScreen(
 
     var showReplanDialog by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showExportDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(replanState) {
         if (replanState is ReplanState.Done) {
@@ -73,6 +83,9 @@ fun PlanDetailScreen(
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") }
                 },
                 actions = {
+                    IconButton(onClick = { showExportDialog = true }) {
+                        Icon(Icons.Default.SaveAlt, "导出计划")
+                    }
                     IconButton(onClick = { showReplanDialog = true }) {
                         Icon(Icons.Default.Autorenew, "AI 调整计划")
                     }
@@ -126,6 +139,14 @@ fun PlanDetailScreen(
                 }
             },
             dismissButton = { TextButton(onClick = { showDeleteDialog = false }) { Text("取消") } },
+        )
+    }
+    if (showExportDialog) {
+        ExportDialog(
+            planTitle = ui.plan?.title ?: "学习计划",
+            onDismiss = { showExportDialog = false },
+            onExportXlsx = { viewModel.exportXlsx() },
+            onExportJson = { viewModel.exportJson() },
         )
     }
 }
@@ -228,8 +249,7 @@ private fun TaskItem(task: TaskEntity, onProgress: (Int) -> Unit) {
 }
 
 @Composable
-private fun ReplanDialog(
-    state: ReplanState,
+private fun ReplanDialog(    state: ReplanState,
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
@@ -273,5 +293,73 @@ private fun ReplanDialog(
         dismissButton = {
             TextButton(onClick = onDismiss, enabled = state !is ReplanState.Loading) { Text("关闭") }
         },
+    )
+}
+
+@Composable
+private fun ExportDialog(
+    planTitle: String,
+    onDismiss: () -> Unit,
+    onExportXlsx: () -> ByteArray?,
+    onExportJson: () -> String?,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var pendingJson by remember { mutableStateOf<String?>(null) }
+
+    fun toast(msg: String) = Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+
+    val saveXlsx = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    ) { uri ->
+        if (uri != null) {
+            val bytes = onExportXlsx()
+            if (bytes == null) { toast("导出失败：计划为空"); return@rememberLauncherForActivityResult }
+            scope.launch {
+                val ok = withContext(Dispatchers.IO) {
+                    runCatching { context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) } }
+                        .isSuccess
+                }
+                toast(if (ok) "已导出 Excel（.xlsx）" else "保存失败")
+            }
+        }
+    }
+    val saveJson = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        val json = pendingJson
+        pendingJson = null
+        if (uri != null && json != null) {
+            scope.launch {
+                val ok = withContext(Dispatchers.IO) {
+                    runCatching {
+                        context.contentResolver.openOutputStream(uri)?.use {
+                            it.write(json.toByteArray(Charsets.UTF_8))
+                        }
+                    }.isSuccess
+                }
+                toast(if (ok) "已导出 JSON（含进度，可重新导入）" else "保存失败")
+            }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("导出计划") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("「$planTitle」", style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = {
+                    val name = (planTitle.take(20).ifBlank { "学习计划" }) + ".xlsx"
+                    saveXlsx.launch(name)
+                }) { Text("导出 Excel（.xlsx，可用 Excel/WPS 打开）") }
+                TextButton(onClick = {
+                    pendingJson = onExportJson()
+                    if (pendingJson == null) toast("导出失败：计划为空")
+                    else saveJson.launch((planTitle.take(20).ifBlank { "学习计划" }) + ".json")
+                }) { Text("导出 JSON（含任务进度，可导入本 App）") }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
     )
 }
