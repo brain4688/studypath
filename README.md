@@ -36,6 +36,12 @@ app/src/main/java/com/studypath/app/
 - **加权进度**：任务以预估时长为权重参与总进度计算，部分完成也会实时推进（Room `SUM(estimatedMinutes * progress)` 聚合查询）
 - **重规划数据合并**：重规划只删除未完成任务、保留已完成历史，新阶段追加在原计划之后，进度数据不丢失
 
+## 📥 下载安装
+
+直接从 [Releases](https://github.com/brain4688/studypath/releases/latest) 下载最新的 `StudyPath-vX.Y.Z-release.apk`（正式签名，Android 8.0+），安装即可使用。
+
+首次使用：**设置 → 新增模型配置**（推荐 DeepSeek，国内可直连）→ 填入自己的 API Key → 测试连通 → 生成第一个学习计划。正式签名 APK 均在本地用私有密钥构建，CI 构建产物请从 Actions 的 Artifacts 获取（debug 签名）。
+
 ## 🚀 快速开始
 
 ### 环境要求
