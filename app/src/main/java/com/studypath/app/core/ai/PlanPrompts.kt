@@ -29,7 +29,8 @@ object PlanPrompts {
           "checkpoint": "达标标准：怎样才算完成，必须可检验可量化",
           "pitfall": "常见坑：这一步最容易踩的坑或走偏的方向",
           "resource": "推荐资源（真实权威的书/官方文档/知名课程/题库，可多个）",
-          "estimatedMinutes": 90
+          "estimatedMinutes": 90,
+          "date": "2026-09-14"
         }
       ]
     }
@@ -49,8 +50,9 @@ $SCHEMA
 4. checkpoint 必须可量化（正确率、数量、时长、能独立完成某操作）。
 5. pitfall 写这一步最常见的走偏方向或错误做法，一句话点醒。
 6. 按用户期望的周期安排阶段数量，让所有任务的 estimatedMinutes 总和与"周期 × 每日时间"匹配。
-7. resource 只推荐真实存在且权威知名的资源（经典书籍、官方文档、知名题库、名校公开课），不要编造链接。
-8. 全程用中文。"""
+7. 【按天排布】每个任务必须用 date 字段（yyyy-MM-dd）指定计划完成日期：日期必须是真实日历日期，从今天（或用户指定的开始日）起连续排布；同一天的多个任务 estimatedMinutes 总和不得超过用户每日可投入时间；用户提到没空的日子少排或不排。app 界面会把日期显示为"9月14日 · 周一"这样的格式，请确保日期与星期真实对应。
+8. resource 只推荐真实存在且权威知名的资源（经典书籍、官方文档、知名题库、名校公开课），不要编造链接。
+9. 全程用中文。"""
 
     fun newUserPrompt(req: LearningRequest): String = buildString {
         appendLine("请为我制定学习计划：")
@@ -71,6 +73,8 @@ $SCHEMA
             appendLine(progressReport)
             appendLine()
             appendLine("我需要调整计划，原因：$reason")
+            appendLine()
+            appendLine("补充信息：今天的日期是 ${java.time.LocalDate.now()}，新任务的 date 字段请从今天或明天开始按天排布。")
             appendLine()
             appendLine("请只输出「从现在开始剩余部分」的新计划（JSON 结构与之前相同，含 title/overview/phases）。")
             appendLine("注意：已完成的内容不要重复安排；结合我的实际进度和剩余时间重新分配任务。")
@@ -95,11 +99,18 @@ $SCHEMA
 5. 如果用户直接给出了一份完整的需求描述，确认要点后同样提示可生成计划。"""
 
     /** 把聊天记录整理为生成计划请求的输入 */
-    fun planFromTranscript(transcript: String): String = buildString {
-        appendLine("以下是我与学习规划顾问的完整聊天记录，请根据其中的需求与信息为我制定学习计划：")
-        appendLine()
-        appendLine(transcript)
-        appendLine()
-        append("请只输出符合系统要求的学习计划 JSON。若聊天中某些信息缺失，请按合理默认值推断（如每天 60 分钟）。")
+    fun planFromTranscript(transcript: String): String {
+        val today = java.time.LocalDate.now()
+        return buildString {
+            appendLine("以下是我与学习规划顾问的完整聊天记录，请根据其中的需求与信息为我制定学习计划：")
+            appendLine()
+            appendLine(transcript)
+            appendLine()
+            appendLine("补充信息：")
+            appendLine("- 今天的日期：$today（星期${today.dayOfWeek}）。")
+            appendLine("- 每个任务的 date 字段请从今天或明天开始，按天连续排布（用户没空的日子可跳过），同一天的任务总时长不超过聊天中提到的每日可投入时间。")
+            appendLine()
+            append("请只输出符合系统要求的学习计划 JSON。若聊天中某些信息缺失，请按合理默认值推断（如每天 60 分钟）。")
+        }
     }
 }

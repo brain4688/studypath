@@ -1,5 +1,6 @@
 package com.studypath.app.ui.settings
 
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -22,7 +23,9 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -32,6 +35,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -46,15 +50,32 @@ import com.studypath.app.data.api.ProviderPreset
 import com.studypath.app.data.api.ProviderPresets
 import com.studypath.app.data.db.ApiConfigEntity
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(viewModel: SettingsViewModel) {
     val configs by viewModel.configs.collectAsStateWithLifecycle()
     val testResult by viewModel.testResult.collectAsStateWithLifecycle()
     val testingId by viewModel.testingId.collectAsStateWithLifecycle()
+    val reminderEnabled by viewModel.reminderEnabled.collectAsStateWithLifecycle()
+    val reminderTime by viewModel.reminderTime.collectAsStateWithLifecycle()
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    LaunchedEffect(Unit) { viewModel.loadReminder(context) }
 
     var editing by remember { mutableStateOf<ApiConfigEntity?>(null) }
     var showEditor by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf<ApiConfigEntity?>(null) }
+    var showTimePicker by remember { mutableStateOf(false) }
+    var pendingEnable by remember { mutableStateOf(false) }
+
+    // Android 13+ 通知运行时权限
+    val permissionLauncher = rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val (h, m) = reminderTime
+        viewModel.setReminder(context, granted && pendingEnable, h, m)
+        pendingEnable = false
+    }
 
     Scaffold(
         floatingActionButton = {
@@ -99,6 +120,55 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
             testResult?.let {
                 item { Text(it, style = MaterialTheme.typography.bodySmall) }
             }
+
+            // ---- 每日提醒 ----
+            item { com.studypath.app.ui.theme.SectionLabel("每日学习提醒") }
+            item {
+                val timeText = "%02d:%02d".format(reminderTime.first, reminderTime.second)
+                Card(
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                ) {
+                    Column(Modifier.padding(14.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("按计划日期提醒今天该学的内容", style = MaterialTheme.typography.titleSmall)
+                                Text(
+                                    if (reminderEnabled) "每天 $timeText 提醒（当天有未完成任务时）"
+                                    else "已关闭，开启后可选择提醒时间",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            androidx.compose.material3.Switch(
+                                checked = reminderEnabled,
+                                onCheckedChange = { wantOn ->
+                                    if (wantOn) {
+                                        if (android.os.Build.VERSION.SDK_INT >= 33) {
+                                            pendingEnable = true
+                                            permissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                                        } else {
+                                            val (h, m) = reminderTime
+                                            viewModel.setReminder(context, true, h, m)
+                                        }
+                                    } else {
+                                        val (h, m) = reminderTime
+                                        viewModel.setReminder(context, false, h, m)
+                                    }
+                                },
+                            )
+                        }
+                        if (reminderEnabled) {
+                            TextButton(onClick = { showTimePicker = true }) {
+                                Text("提醒时间：$timeText")
+                            }
+                        }
+                    }
+                }
+            }
+
             item { Spacer(Modifier.height(72.dp)) }
         }
     }
@@ -108,6 +178,25 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
             initial = editing,
             onDismiss = { showEditor = false },
             onSave = { viewModel.save(it); showEditor = false },
+        )
+    }
+    if (showTimePicker) {
+        val state = androidx.compose.material3.rememberTimePickerState(
+            initialHour = reminderTime.first,
+            initialMinute = reminderTime.second,
+            is24Hour = true,
+        )
+        AlertDialog(
+            onDismissRequest = { showTimePicker = false },
+            title = { Text("选择提醒时间") },
+            text = { androidx.compose.material3.TimePicker(state = state) },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.setReminder(context, true, state.hour, state.minute)
+                    showTimePicker = false
+                }) { Text("确定") }
+            },
+            dismissButton = { TextButton(onClick = { showTimePicker = false }) { Text("取消") } },
         )
     }
     deleting?.let { config ->

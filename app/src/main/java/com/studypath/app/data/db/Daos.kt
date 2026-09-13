@@ -68,6 +68,9 @@ interface PlanDao {
     @Query("SELECT * FROM plans WHERE id = :id")
     fun observeById(id: Long): Flow<PlanEntity?>
 
+    @Query("SELECT * FROM plans WHERE id = :id")
+    suspend fun getById(id: Long): PlanEntity?
+
     @Insert
     suspend fun insert(plan: PlanEntity): Long
 
@@ -104,6 +107,9 @@ interface TaskDao {
 
     @Query("SELECT * FROM tasks WHERE planId = :planId ORDER BY orderIndex ASC")
     suspend fun getByPlan(planId: Long): List<TaskEntity>
+
+    @Query("SELECT * FROM tasks WHERE scheduledDate = :epochDay AND progress < 100 ORDER BY orderIndex ASC")
+    suspend fun getTodayUnfinished(epochDay: Long): List<TaskEntity>
 
     @Query("DELETE FROM tasks WHERE planId = :planId AND progress < 100")
     suspend fun deleteUnfinished(planId: Long)

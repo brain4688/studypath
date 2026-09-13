@@ -29,6 +29,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -54,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.studypath.app.data.db.PhaseWithTasks
 import com.studypath.app.data.db.TaskEntity
+import com.studypath.app.data.reminder.describeDay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -193,14 +195,34 @@ private fun OverviewCard(ui: PlanDetailUi) {
                     color = MaterialTheme.colorScheme.primary,
                 )
             }
+            Spacer(Modifier.height(10.dp))
+            HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outline)
+            Spacer(Modifier.height(8.dp))
+            Text(
+                if (ui.todayCount > 0) "今日待学 · ${ui.todayCount} 项 · 约 ${ui.todayMinutes} 分钟"
+                else "今天没有安排的任务，休息一下 🌿",
+                style = MaterialTheme.typography.bodySmall,
+                color = if (ui.todayCount > 0) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
 
 @Composable
 private fun PhaseHeader(phase: PhaseWithTasks) {
+    val days = phase.tasks.map { it.scheduledDate }.filter { it > 0 }
+    val rangeText = if (days.isNotEmpty()) {
+        val s = java.time.LocalDate.ofEpochDay(days.min())
+        val e = java.time.LocalDate.ofEpochDay(days.max())
+        val fmt = { d: java.time.LocalDate -> "${d.monthValue}.${d.dayOfMonth}" }
+        if (days.size == 1) fmt(s) else "${fmt(s)} - ${fmt(e)}"
+    } else ""
     Column {
-        com.studypath.app.ui.theme.SectionLabel("阶段 · ${phase.phase.title}")
+        com.studypath.app.ui.theme.SectionLabel(
+            if (rangeText.isBlank()) "阶段 · ${phase.phase.title}"
+            else "阶段 · ${phase.phase.title}（$rangeText）"
+        )
         if (phase.phase.summary.isNotBlank()) {
             Text(
                 phase.phase.summary,
@@ -223,7 +245,7 @@ private fun TaskItem(task: TaskEntity, index: Int, onProgress: (Int) -> Unit) {
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(modifier = Modifier.padding(15.dp)) {
-            // 序号行 + 状态
+            // 序号行 + 日期 + 状态
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     "T${index + 1}",
@@ -231,6 +253,15 @@ private fun TaskItem(task: TaskEntity, index: Int, onProgress: (Int) -> Unit) {
                     color = MaterialTheme.colorScheme.tertiary,
                 )
                 Spacer(Modifier.width(9.dp))
+                describeDay(task.scheduledDate)?.let { day ->
+                    Text(
+                        day,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (day == "今天") MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.width(9.dp))
+                }
                 Text(
                     when {
                         task.progress >= 100 -> "已完成"

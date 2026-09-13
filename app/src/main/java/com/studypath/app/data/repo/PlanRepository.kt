@@ -108,6 +108,7 @@ class PlanRepository(
                         pitfall = t.pitfall,
                         resource = t.resource,
                         estimatedMinutes = t.estimatedMinutes.coerceAtLeast(5),
+                        scheduledDate = parseDate(t.scheduledDate),
                         progress = (t.progress ?: 0).coerceIn(0, 100),
                         orderIndex = taskIdx,
                     )
@@ -159,7 +160,8 @@ class PlanRepository(
                     tasks = p.tasks.map {
                         AiTask(
                             it.title, it.detail, it.method, it.deliverable,
-                            it.checkpoint, it.pitfall, it.resource, it.estimatedMinutes, it.progress,
+                            it.checkpoint, it.pitfall, it.resource, it.estimatedMinutes,
+                            formatDate(it.scheduledDate), it.progress,
                         )
                     },
                 )
@@ -168,6 +170,16 @@ class PlanRepository(
         return exportJson.encodeToString(AiPlan.serializer(), aiPlan)
     }
 }
+
+/** "yyyy-MM-dd" → epoch day；解析失败或为空返回 -1（未排期） */
+internal fun parseDate(text: String?): Long =
+    text?.trim()?.takeIf { it.isNotBlank() }?.let {
+        runCatching { java.time.LocalDate.parse(it).toEpochDay() }.getOrDefault(-1L)
+    } ?: -1L
+
+/** epoch day → "yyyy-MM-dd"；-1 返回 null */
+internal fun formatDate(epochDay: Long): String? =
+    if (epochDay < 0) null else java.time.LocalDate.ofEpochDay(epochDay).toString()
 
 private val exportJson = kotlinx.serialization.json.Json {
     encodeDefaults = true

@@ -77,6 +77,8 @@ data class TaskEntity(
     val pitfall: String = "",     // 常见坑
     val resource: String = "",    // 推荐学习资源
     val estimatedMinutes: Int,
+    /** 计划完成日期（epoch day）；-1 表示未排期 */
+    val scheduledDate: Long = -1L,
     val progress: Int = 0,     // 0..100
     val orderIndex: Int,
 )

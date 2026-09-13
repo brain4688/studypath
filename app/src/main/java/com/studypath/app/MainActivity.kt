@@ -59,7 +59,7 @@ fun AppNavGraph(container: AppContainer = (LocalContext.current.applicationConte
     val navController = rememberNavController()
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route
-    val showTopBar = currentRoute in setOf(Routes.HOME, Routes.SETTINGS, Routes.CHAT)
+    val showTopBar = currentRoute in setOf(Routes.HOME, Routes.SETTINGS)
 
     Scaffold(
         topBar = {
@@ -67,11 +67,7 @@ fun AppNavGraph(container: AppContainer = (LocalContext.current.applicationConte
                 TopAppBar(
                     title = {
                         Text(
-                            when (currentRoute) {
-                                Routes.SETTINGS -> "模型设置"
-                                Routes.CHAT -> "AI 学习规划师"
-                                else -> "StudyPath 智学规划"
-                            }
+                            if (currentRoute == Routes.SETTINGS) "模型设置" else "StudyPath 智学规划"
                         )
                     },
                     navigationIcon = {
@@ -105,6 +101,7 @@ fun AppNavGraph(container: AppContainer = (LocalContext.current.applicationConte
                 })
                 ChatScreen(
                     viewModel = vm,
+                    onBack = { navController.popBackStack() },
                     onCreated = { planId ->
                         navController.popBackStack()
                         navController.navigate(Routes.planDetail(planId))

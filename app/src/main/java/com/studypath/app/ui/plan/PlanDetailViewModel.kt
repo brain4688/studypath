@@ -22,6 +22,9 @@ data class PlanDetailUi(
     val plan: PlanEntity? = null,
     val phases: List<PhaseWithTasks> = emptyList(),
     val percent: Int = 0,
+    /** 今天未完成的任务数与总分钟数（按计划日期） */
+    val todayCount: Int = 0,
+    val todayMinutes: Int = 0,
 )
 
 sealed interface ReplanState {
@@ -41,7 +44,15 @@ class PlanDetailViewModel(
         combine(repository.observePlan(planId), repository.observePhases(planId)) { plan, phases ->
             val weighted = phases.sumOf { p -> p.tasks.sumOf { it.estimatedMinutes.toLong() * it.progress } }
             val total = phases.sumOf { p -> p.tasks.sumOf { it.estimatedMinutes.toLong() } }
-            PlanDetailUi(plan, phases, com.studypath.app.core.ProgressCalculator.percent(weighted, total))
+            val today = java.time.LocalDate.now().toEpochDay()
+            val todayTasks = phases.flatMap { it.tasks }
+                .filter { it.scheduledDate == today && it.progress < 100 }
+            PlanDetailUi(
+                plan, phases,
+                com.studypath.app.core.ProgressCalculator.percent(weighted, total),
+                todayCount = todayTasks.size,
+                todayMinutes = todayTasks.sumOf { it.estimatedMinutes },
+            )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), PlanDetailUi())
 
     private val _replanState = MutableStateFlow<ReplanState>(ReplanState.Idle)

@@ -23,7 +23,14 @@ sealed interface ChatUiState {
     /** 正在根据聊天记录生成计划 */
     data object Planning : ChatUiState
 
-    /** 计划生成成功 */
+    /** 计划已生成，等待用户预览确认（尚未落库） */
+    data class Preview(
+        val plan: com.studypath.app.core.ai.AiPlan,
+        val configName: String,
+        val goal: String,
+    ) : ChatUiState
+
+    /** 计划已确认创建 */
     data class PlanReady(val planId: Long) : ChatUiState
 
     /** 出错 */
@@ -93,9 +100,13 @@ class ChatViewModel(
                     runCatching { PlanParser.parse(content) }.fold(
                         onSuccess = { aiPlan ->
                             val goal = history.firstOrNull { it.role == "user" }
-                                ?.content?.take(80) ?: "导入的计划"
-                            val planId = repository.createPlan(aiPlan, goal, "${config.name} · ${config.model}")
-                            _state.value = ChatUiState.PlanReady(planId)
+                                ?.content?.take(80) ?: "我的学习计划"
+                            // 不直接落库：先让用户预览确认
+                            _state.value = ChatUiState.Preview(
+                                plan = aiPlan,
+                                configName = "${config.name} · ${config.model}",
+                                goal = goal,
+                            )
                         },
                         onFailure = { e ->
                             _state.value = ChatUiState.Error("模型返回内容无法解析为计划：${e.message}")
@@ -107,6 +118,20 @@ class ChatViewModel(
                 },
             )
         }
+    }
+
+    /** 用户在预览中确认，正式创建计划 */
+    fun confirmPreview() {
+        val s = _state.value as? ChatUiState.Preview ?: return
+        viewModelScope.launch {
+            val planId = repository.createPlan(s.plan, s.goal, s.configName)
+            _state.value = ChatUiState.PlanReady(planId)
+        }
+    }
+
+    /** 用户放弃预览，回到聊天继续沟通 */
+    fun dismissPreview() {
+        if (_state.value is ChatUiState.Preview) _state.value = ChatUiState.Chatting
     }
 
     /** 开启新对话（清空聊天记录） */

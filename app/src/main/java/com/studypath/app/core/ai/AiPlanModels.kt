@@ -32,6 +32,8 @@ data class AiTask(
     val pitfall: String = "",
     val resource: String = "",
     val estimatedMinutes: Int = 60,
+    /** 计划完成日期，yyyy-MM-dd；AI 生成时包含，导入旧 JSON 时可为空 */
+    val scheduledDate: String? = null,
     /** 导出/导入时携带的完成度（0..100）；AI 生成时不包含，默认从头开始 */
     val progress: Int? = null,
 )
