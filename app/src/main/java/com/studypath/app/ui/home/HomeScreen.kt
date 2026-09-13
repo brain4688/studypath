@@ -281,7 +281,8 @@ private val IMPORT_EXAMPLE = """{
           "checkpoint": "能不看资料写出字符串与数字互转的 3 种写法",
           "pitfall": "别只看不练，示例必须亲手敲一遍",
           "resource": "Python 官方教程 docs.python.org/zh-cn/3/tutorial",
-          "estimatedMinutes": 90
+          "estimatedMinutes": 90,
+          "date": "2026-09-14"
         }
       ]
     }
