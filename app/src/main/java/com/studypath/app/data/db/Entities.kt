@@ -53,6 +53,25 @@ data class ChatMessageEntity(
     val createdAt: Long = System.currentTimeMillis(),
 )
 
+/** 任务交付记录：文字与图片（学习成果凭证） */
+@Entity(
+    tableName = "deliveries",
+    foreignKeys = [ForeignKey(
+        entity = TaskEntity::class, parentColumns = ["id"],
+        childColumns = ["taskId"], onDelete = ForeignKey.CASCADE,
+    )],
+    indices = [Index("taskId")],
+)
+data class DeliveryEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val taskId: Long,
+    val planId: Long,
+    val text: String = "",
+    /** 应用私有目录内的图片文件名，可空 */
+    val imagePath: String? = null,
+    val createdAt: Long = System.currentTimeMillis(),
+)
+
 /**
  * 小任务：progress 取 0..100，支持"部分完成"。
  * 总进度 = Σ(estimatedMinutes × progress) / Σ(estimatedMinutes)，按预估时长加权。

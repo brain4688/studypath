@@ -27,6 +27,8 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.studypath.app.ui.chat.ChatScreen
 import com.studypath.app.ui.chat.ChatViewModel
+import com.studypath.app.ui.create.CreatePlanScreen
+import com.studypath.app.ui.create.CreatePlanViewModel
 import com.studypath.app.ui.home.HomeScreen
 import com.studypath.app.ui.home.HomeViewModel
 import com.studypath.app.ui.plan.PlanDetailScreen
@@ -48,6 +50,7 @@ class MainActivity : ComponentActivity() {
 object Routes {
     const val HOME = "home"
     const val CHAT = "chat"
+    const val CREATE = "create"
     const val SETTINGS = "settings"
     const val PLAN_DETAIL = "plan/{planId}"
     fun planDetail(planId: Long) = "plan/$planId"
@@ -91,8 +94,22 @@ fun AppNavGraph(container: AppContainer = (LocalContext.current.applicationConte
                 HomeScreen(
                     viewModel = vm,
                     onNewPlan = { navController.navigate(Routes.CHAT) },
+                    onCreatePlan = { navController.navigate(Routes.CREATE) },
                     onOpenPlan = { navController.navigate(Routes.planDetail(it)) },
                     onOpenSettings = { navController.navigate(Routes.SETTINGS) },
+                )
+            }
+            composable(Routes.CREATE) {
+                val vm: CreatePlanViewModel = viewModel(initializer = {
+                    CreatePlanViewModel(container.repository)
+                })
+                CreatePlanScreen(
+                    viewModel = vm,
+                    onBack = { navController.popBackStack() },
+                    onCreated = { planId ->
+                        navController.popBackStack()
+                        navController.navigate(Routes.planDetail(planId))
+                    },
                 )
             }
             composable(Routes.CHAT) {

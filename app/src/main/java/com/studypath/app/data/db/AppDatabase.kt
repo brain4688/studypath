@@ -10,9 +10,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 @Database(
     entities = [
         ApiConfigEntity::class, PlanEntity::class, PhaseEntity::class,
-        TaskEntity::class, ChatMessageEntity::class,
+        TaskEntity::class, ChatMessageEntity::class, DeliveryEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -21,6 +21,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun phaseDao(): PhaseDao
     abstract fun taskDao(): TaskDao
     abstract fun chatDao(): ChatDao
+    abstract fun deliveryDao(): DeliveryDao
 
     companion object {
         /** v2：新增 chat_messages 表（AI 规划师聊天记录） */
@@ -53,6 +54,23 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v5：任务交付记录表（文字+图片） */
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS `deliveries` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `taskId` INTEGER NOT NULL,
+                        `planId` INTEGER NOT NULL,
+                        `text` TEXT NOT NULL DEFAULT '',
+                        `imagePath` TEXT,
+                        `createdAt` INTEGER NOT NULL,
+                        FOREIGN KEY(`taskId`) REFERENCES `tasks`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )"""
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_deliveries_taskId` ON `deliveries` (`taskId`)")
+            }
+        }
+
         @Volatile private var instance: AppDatabase? = null
 
         fun get(context: Context): AppDatabase =
@@ -62,7 +80,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "studypath.db",
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .build().also { instance = it }
             }
     }

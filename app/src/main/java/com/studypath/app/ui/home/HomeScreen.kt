@@ -20,6 +20,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.AlertDialog
@@ -62,6 +63,7 @@ import java.util.Locale
 fun HomeScreen(
     viewModel: HomeViewModel,
     onNewPlan: () -> Unit,
+    onCreatePlan: () -> Unit,
     onOpenPlan: (Long) -> Unit,
     onOpenSettings: () -> Unit,
 ) {
@@ -109,6 +111,9 @@ fun HomeScreen(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                        }
+                        IconButton(onClick = onCreatePlan) {
+                            Icon(Icons.Default.EditNote, contentDescription = "手动创建计划")
                         }
                         IconButton(onClick = { showImportDialog = true }) {
                             Icon(Icons.Default.UploadFile, contentDescription = "导入计划")

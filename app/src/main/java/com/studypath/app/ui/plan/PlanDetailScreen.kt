@@ -1,9 +1,15 @@
 package com.studypath.app.ui.plan
 
+import android.Manifest
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,15 +22,26 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.SaveAlt
+import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.UnfoldLess
+import androidx.compose.material.icons.filled.UnfoldMore
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -33,9 +50,11 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -49,13 +68,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.studypath.app.data.api.ChatMessage
+import com.studypath.app.data.db.DeliveryEntity
 import com.studypath.app.data.db.PhaseWithTasks
 import com.studypath.app.data.db.TaskEntity
 import com.studypath.app.data.reminder.describeDay
+import java.io.File
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -73,6 +99,20 @@ fun PlanDetailScreen(
     var showReplanDialog by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showExportDialog by remember { mutableStateOf(false) }
+    var showReminderDialog by remember { mutableStateOf(false) }
+    var showDeliveryFor by remember { mutableStateOf<TaskEntity?>(null) }
+    val coach by viewModel.coach.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val expandedPhases by viewModel.expandedPhases.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+
+    // 折叠默认态：首次进入只展开当前阶段
+    LaunchedEffect(ui.phases) {
+        if (expandedPhases == null && ui.phases.isNotEmpty()) {
+            val current = ui.phases.firstOrNull { it.phase.orderIndex == ui.currentPhaseOrder }
+            viewModel.setAllExpanded(expandAll = false, ids = listOfNotNull(current?.phase?.id))
+        }
+    }
 
     LaunchedEffect(replanState) {
         if (replanState is ReplanState.Done) {
@@ -88,6 +128,9 @@ fun PlanDetailScreen(
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") }
                 },
                 actions = {
+                    IconButton(onClick = { showReminderDialog = true }) {
+                        Icon(Icons.Default.Notifications, "提醒设置")
+                    }
                     IconButton(onClick = { showExportDialog = true }) {
                         Icon(Icons.Default.SaveAlt, "导出计划")
                     }
@@ -113,14 +156,57 @@ fun PlanDetailScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item { OverviewCard(ui = ui) }
+            if (ui.phases.isNotEmpty()) {
+                item { RouteMap(ui = ui, onPhaseClick = { id ->
+                    // 点击路线节点：仅展开该阶段
+                    viewModel.setAllExpanded(expandAll = false, ids = listOf(id))
+                }) }
+                item {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        val allIds = ui.phases.map { it.phase.id }
+                        val expanded = expandedPhases ?: emptySet()
+                        Text(
+                            "阶段任务 · ${expanded.size}/${ui.phases.size} 已展开",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = {
+                            if (expanded.size == ui.phases.size) viewModel.setAllExpanded(false, allIds)
+                            else viewModel.setAllExpanded(true, allIds)
+                        }) {
+                            Icon(
+                                if (expanded.size == ui.phases.size) Icons.Default.UnfoldLess
+                                else Icons.Default.UnfoldMore,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(if (expanded.size == ui.phases.size) "全部收起" else "全部展开",
+                                style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+                }
+            }
             ui.phases.forEach { phase ->
-                item(key = "phase_${phase.phase.id}") { PhaseHeader(phase) }
-                itemsIndexed(phase.tasks, key = { _, t -> "task_${t.id}" }) { idx, task ->
-                    TaskItem(
-                        task = task,
-                        index = idx,
-                        onProgress = { p -> viewModel.setTaskProgress(task.id, p) },
+                val isExpanded = (expandedPhases ?: emptySet()).contains(phase.phase.id)
+                item(key = "phase_${phase.phase.id}") {
+                    PhaseHeader(
+                        phase = phase,
+                        expanded = isExpanded,
+                        onToggle = { viewModel.togglePhase(phase.phase.id) },
                     )
+                }
+                if (isExpanded) {
+                    itemsIndexed(phase.tasks, key = { _, t -> "task_${t.id}" }) { idx, task ->
+                        TaskItem(
+                            task = task,
+                            index = idx,
+                            onProgress = { p -> viewModel.setTaskProgress(task.id, p) },
+                            onAskAi = { viewModel.openCoach(phase.phase.title, idx, task) },
+                            onDelivery = { showDeliveryFor = task },
+                        )
+                    }
                 }
             }
             item { Spacer(Modifier.height(24.dp)) }
@@ -154,6 +240,31 @@ fun PlanDetailScreen(
             onExportXlsx = { viewModel.exportXlsx() },
             onExportJson = { viewModel.exportJson() },
         )
+    }
+    showDeliveryFor?.let { task ->
+        DeliveryDialog(
+            taskId = task.id,
+            taskTitle = task.title,
+            onDismiss = { showDeliveryFor = null },
+            onAdd = { text, imagePath -> viewModel.addDelivery(task.id, text, imagePath) },
+            onDelete = { viewModel.deleteDelivery(it) },
+            observe = viewModel::observeDeliveries,
+        )
+    }
+    if (showReminderDialog) {
+        ReminderDialog(
+            onDismiss = { showReminderDialog = false },
+            loadState = { viewModel.loadReminder(it) },
+            onSave = { enabled, h, m -> viewModel.setReminder(context, enabled, h, m) },
+        )
+    }
+    when (val c = coach) {
+        is CoachState.Open -> TaskCoachDialog(
+            state = c,
+            onDismiss = { viewModel.closeCoach() },
+            onAsk = { viewModel.askCoach(it) },
+        )
+        else -> Unit
     }
 }
 
@@ -209,8 +320,9 @@ private fun OverviewCard(ui: PlanDetailUi) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PhaseHeader(phase: PhaseWithTasks) {
+private fun PhaseHeader(phase: PhaseWithTasks, expanded: Boolean, onToggle: () -> Unit) {
     val days = phase.tasks.map { it.scheduledDate }.filter { it > 0 }
     val rangeText = if (days.isNotEmpty()) {
         val s = java.time.LocalDate.ofEpochDay(days.min())
@@ -218,23 +330,51 @@ private fun PhaseHeader(phase: PhaseWithTasks) {
         val fmt = { d: java.time.LocalDate -> "${d.monthValue}.${d.dayOfMonth}" }
         if (days.size == 1) fmt(s) else "${fmt(s)} - ${fmt(e)}"
     } else ""
-    Column {
-        com.studypath.app.ui.theme.SectionLabel(
-            if (rangeText.isBlank()) "阶段 · ${phase.phase.title}"
-            else "阶段 · ${phase.phase.title}（$rangeText）"
-        )
-        if (phase.phase.summary.isNotBlank()) {
+    val done = phase.tasks.count { it.progress >= 100 }
+    Card(
+        onClick = onToggle,
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Text(
-                phase.phase.summary,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                if (expanded) "▾" else "▸",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
             )
+            Spacer(Modifier.width(8.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "${phase.phase.title}（$rangeText）",
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Text(
+                    "${phase.tasks.size} 个任务 · 已完成 $done" +
+                        (phase.phase.summary.takeIf { expanded && it.isNotBlank() }?.let { " · $it" } ?: ""),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = if (expanded) 2 else 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun TaskItem(task: TaskEntity, index: Int, onProgress: (Int) -> Unit) {
+private fun TaskItem(
+    task: TaskEntity,
+    index: Int,
+    onProgress: (Int) -> Unit,
+    onAskAi: () -> Unit,
+    onDelivery: () -> Unit,
+) {
     var expanded by remember(task.id) { mutableStateOf(false) }
     var sliderValue by remember(task.id, task.progress) { mutableStateOf(task.progress.toFloat()) }
     val hasDetail = task.method.isNotBlank() || task.checkpoint.isNotBlank() || task.resource.isNotBlank()
@@ -341,8 +481,31 @@ private fun TaskItem(task: TaskEntity, index: Int, onProgress: (Int) -> Unit) {
                         .padding(horizontal = 10.dp, vertical = 8.dp),
                 )
             }
+            // 工具行：AI 教练 + 交付记录
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
+                TextButton(
+                    onClick = onAskAi,
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                ) {
+                    Icon(Icons.Default.School, contentDescription = null, modifier = Modifier.size(15.dp),
+                        tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(4.dp))
+                    Text("问 AI 怎么做", style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary)
+                }
+                TextButton(
+                    onClick = onDelivery,
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                ) {
+                    Icon(Icons.Default.AttachFile, contentDescription = null, modifier = Modifier.size(15.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.width(4.dp))
+                    Text("交付记录", style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
             // 进度滑条
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
                 Slider(
                     value = sliderValue,
                     onValueChange = { sliderValue = it },
@@ -494,5 +657,416 @@ private fun ExportDialog(
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
+    )
+}
+
+/** 阶段路线流程图：横向节点条，已完成✓ / 当前进行中高亮 / 未开始空心 */
+@Composable
+private fun RouteMap(ui: PlanDetailUi, onPhaseClick: (Long) -> Unit) {
+    LazyRow(
+        horizontalArrangement = Arrangement.spacedBy(0.dp),
+    ) {
+        items(ui.phases, key = { it.phase.id }) { phase ->
+            val allDone = phase.tasks.isNotEmpty() && phase.tasks.all { it.progress >= 100 }
+            val isCurrent = phase.phase.orderIndex == ui.currentPhaseOrder && !allDone
+            val days = phase.tasks.map { it.scheduledDate }.filter { it > 0 }
+            val range = if (days.isNotEmpty()) {
+                val s = LocalDate.ofEpochDay(days.min())
+                val e = LocalDate.ofEpochDay(days.max())
+                "${s.monthValue}.${s.dayOfMonth}"
+            } else ""
+            val done = phase.tasks.count { it.progress >= 100 }
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.width(96.dp).padding(vertical = 4.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // 左侧连线
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .height(2.dp)
+                            .background(MaterialTheme.colorScheme.outline),
+                    )
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .size(30.dp)
+                            .border(
+                                width = 2.dp,
+                                color = when {
+                                    allDone -> MaterialTheme.colorScheme.primary
+                                    isCurrent -> MaterialTheme.colorScheme.primary
+                                    else -> MaterialTheme.colorScheme.outline
+                                },
+                                shape = CircleShape,
+                            )
+                            .background(
+                                if (allDone) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                CircleShape,
+                            ),
+                    ) {
+                        Text(
+                            if (allDone) "✓" else "${phase.phase.orderIndex + 1}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (allDone) MaterialTheme.colorScheme.onPrimary
+                            else if (isCurrent) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .height(2.dp)
+                            .background(MaterialTheme.colorScheme.outline),
+                    )
+                }
+                Text(
+                    phase.phase.title,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (isCurrent) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+                Text(
+                    buildString {
+                        append(range)
+                        append(" · ")
+                        append("${done}/${phase.tasks.size}")
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                TextButton(
+                    onClick = { onPhaseClick(phase.phase.id) },
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                ) { Text("查看", style = MaterialTheme.typography.labelSmall) }
+            }
+        }
+    }
+}
+
+/** 任务 AI 执行教练：带着任务完整上下文的多轮问答 */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TaskCoachDialog(
+    state: CoachState.Open,
+    onDismiss: () -> Unit,
+    onAsk: (String) -> Unit,
+) {
+    var input by remember { mutableStateOf("") }
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    LaunchedEffect(state.messages.size, state.loading) {
+        if (state.messages.isNotEmpty()) listState.animateScrollToItem(state.messages.size - 1)
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("执行教练 · ${state.label}", style = MaterialTheme.typography.titleMedium) },
+        text = {
+            Column {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxWidth().height(360.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    item {
+                        Text(
+                            "「${state.task.title}」",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        Text(
+                            state.task.detail.ifBlank { state.task.method },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        HorizontalDivider(
+                            modifier = Modifier.padding(top = 6.dp),
+                            color = MaterialTheme.colorScheme.outline,
+                        )
+                    }
+                    items(state.messages) { m ->
+                        if (m.role == "user") {
+                            Text(
+                                "我：${m.content}",
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        } else {
+                            Text(
+                                m.content,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(
+                                        MaterialTheme.colorScheme.surfaceVariant,
+                                        RoundedCornerShape(10.dp),
+                                    )
+                                    .padding(10.dp),
+                            )
+                        }
+                    }
+                    if (state.loading) {
+                        item {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                                Spacer(Modifier.width(8.dp))
+                                Text("教练思考中…", style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                    state.error?.let {
+                        item { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                    }
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.padding(top = 8.dp),
+                ) {
+                    OutlinedTextField(
+                        value = input,
+                        onValueChange = { input = it },
+                        placeholder = { Text("例如：第一步具体做什么？") },
+                        modifier = Modifier.weight(1f),
+                        textStyle = MaterialTheme.typography.bodySmall,
+                        maxLines = 3,
+                    )
+                    IconButton(
+                        onClick = { onAsk(input); input = "" },
+                        enabled = input.isNotBlank() && !state.loading,
+                    ) { Icon(Icons.AutoMirrored.Filled.Send, "发送") }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
+    )
+}
+
+/** 交付记录：文字 + 图片，学习成果凭证 */
+@Composable
+private fun DeliveryDialog(
+    taskId: Long,
+    taskTitle: String,
+    onDismiss: () -> Unit,
+    onAdd: (String, String?) -> Unit,
+    onDelete: (Long) -> Unit,
+    observe: (Long) -> kotlinx.coroutines.flow.Flow<List<DeliveryEntity>>,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var text by remember { mutableStateOf("") }
+    var pendingImage by remember { mutableStateOf<String?>(null) }
+    val deliveries by observe(taskId).collectAsStateWithLifecycle(initialValue = emptyList())
+
+    val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val copied = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val dir = File(context.filesDir, "deliveries").apply { mkdirs() }
+                        val file = File(dir, "d_${taskId}_${System.currentTimeMillis()}.jpg")
+                        context.contentResolver.openInputStream(uri)?.use { input ->
+                            file.outputStream().use { output -> input.copyTo(output) }
+                        }
+                        file.absolutePath
+                    }.getOrNull()
+                }
+                pendingImage = copied
+                if (copied == null) Toast.makeText(context, "读取图片失败", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("交付记录", style = MaterialTheme.typography.titleMedium) },
+        text = {
+            Column {
+                Text(
+                    "「${taskTitle}」",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().height(300.dp).padding(top = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    if (deliveries.isEmpty()) {
+                        item {
+                            Text(
+                                "还没有交付记录。完成任务后把成果（一段总结、笔记截图、看板链接…）存到这里，直观看见自己的学习轨迹。",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    items(deliveries, key = { it.id }) { d ->
+                        Card(
+                            shape = RoundedCornerShape(10.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                        ) {
+                            Column(Modifier.padding(10.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        DateTimeFormatter.ofPattern("MM-dd HH:mm")
+                                            .format(java.time.Instant.ofEpochMilli(d.createdAt)
+                                                .atZone(java.time.ZoneId.systemDefault())),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    Spacer(Modifier.weight(1f))
+                                    TextButton(
+                                        onClick = { onDelete(d.id) },
+                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                                    ) {
+                                        Icon(Icons.Default.Delete, "删除", Modifier.size(14.dp),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                                if (d.text.isNotBlank()) Text(d.text, style = MaterialTheme.typography.bodySmall)
+                                d.imagePath?.let { path ->
+                                    val bmp = remember(path) {
+                                        runCatching {
+                                            BitmapFactory.decodeFile(path)?.let {
+                                                val s = 1024f / maxOf(it.width, it.height).coerceAtLeast(1)
+                                                Bitmap.createScaledBitmap(
+                                                    it,
+                                                    (it.width * s).toInt().coerceAtLeast(1),
+                                                    (it.height * s).toInt().coerceAtLeast(1),
+                                                    true,
+                                                )
+                                            }
+                                        }.getOrNull()
+                                    }
+                                    if (bmp != null) {
+                                        Image(
+                                            bitmap = bmp.asImageBitmap(),
+                                            contentDescription = "交付图片",
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(160.dp)
+                                                .padding(top = 6.dp),
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.padding(top = 8.dp),
+                ) {
+                    OutlinedTextField(
+                        value = text,
+                        onValueChange = { text = it },
+                        placeholder = { Text("写下这段学习的成果或心得…") },
+                        modifier = Modifier.weight(1f),
+                        textStyle = MaterialTheme.typography.bodySmall,
+                        minLines = 1,
+                        maxLines = 3,
+                    )
+                    IconButton(onClick = { pickImage.launch("image/*") }) {
+                        Icon(Icons.Default.Add, "添加图片")
+                    }
+                    Button(
+                        onClick = { onAdd(text, pendingImage); text = ""; pendingImage = null },
+                        enabled = text.isNotBlank() || pendingImage != null,
+                    ) { Text("保存") }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
+    )
+}
+
+/** 每计划独立的提醒设置 */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ReminderDialog(
+    onDismiss: () -> Unit,
+    loadState: (Context) -> Pair<Boolean, Pair<Int, Int>>,
+    onSave: (Boolean, Int, Int) -> Unit,
+) {
+    val context = LocalContext.current
+    var enabled by remember { mutableStateOf(loadState(context).first) }
+    var time by remember { mutableStateOf(loadState(context).second) }
+    var permissionDenied by remember { mutableStateOf(false) }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) onSave(true, time.first, time.second)
+        else permissionDenied = true
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("本计划的每日提醒") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("每天提醒今日任务", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            if (enabled) "已开启 · %02d:%02d".format(time.first, time.second) else "已关闭",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = enabled,
+                        onCheckedChange = { want ->
+                            if (want && android.os.Build.VERSION.SDK_INT >= 33) {
+                                permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            } else {
+                                enabled = want
+                                onSave(want, time.first, time.second)
+                            }
+                        },
+                    )
+                }
+                if (enabled) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("提醒时间", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                        TextButton(onClick = {
+                            // 依次 -15 分钟步进循环过于绕，直接用两个 +/- 按钮调小时和分钟
+                        }) { Text("") }
+                        OutlinedButton(onClick = {
+                            val t = time.first * 60 + time.second - 15
+                            val m = ((t % 1440) + 1440) % 1440
+                            time = (m / 60) to (m % 60)
+                            onSave(enabled, time.first, time.second)
+                        }) { Text("-15分") }
+                        Text("%02d:%02d".format(time.first, time.second), style = MaterialTheme.typography.titleSmall)
+                        OutlinedButton(onClick = {
+                            val t = time.first * 60 + time.second + 15
+                            val m = ((t % 1440) + 1440) % 1440
+                            time = (m / 60) to (m % 60)
+                            onSave(enabled, time.first, time.second)
+                        }) { Text("+15分") }
+                    }
+                }
+                if (permissionDenied) {
+                    Text(
+                        "未授予通知权限，提醒将无法弹出。可到系统设置中手动开启。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+                Text(
+                    "每个计划的提醒相互独立：当天该计划有未完成任务时才会通知。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("完成") } },
     )
 }

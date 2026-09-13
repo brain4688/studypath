@@ -15,6 +15,7 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import androidx.work.workDataOf
 import com.studypath.app.MainActivity
 import com.studypath.app.R
 import com.studypath.app.data.db.AppDatabase
@@ -27,28 +28,27 @@ import java.time.LocalTime
 import java.time.format.TextStyle
 import java.util.Locale
 
-/** 每日学习提醒：到设定时刻检查今天的任务，有未完成的就发通知 */
+/** 每日学习提醒：到设定时刻检查某个计划当天的任务，有未完成的就发通知 */
 class DailyReminderWorker(
     context: Context,
     params: WorkerParameters,
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
-        if (!ReminderPrefs.isEnabled(applicationContext)) return@withContext Result.success()
+        val planId = inputData.getLong(KEY_PLAN_ID, -1L)
+        if (planId <= 0) return@withContext Result.success()
+        if (!ReminderPrefs.isEnabled(applicationContext, planId)) return@withContext Result.success()
+
         val db = AppDatabase.get(applicationContext)
+        val plan = db.planDao().getById(planId) ?: return@withContext Result.success()
         val today = LocalDate.now().toEpochDay()
-        val tasks = db.taskDao().getTodayUnfinished(today)
+        val tasks = db.taskDao().getTodayUnfinishedByPlan(today, planId)
         if (tasks.isEmpty()) return@withContext Result.success()
 
-        val planNames = tasks.mapNotNull { db.planDao().getById(it.planId)?.title }.distinct()
         val preview = tasks.take(3).joinToString("；") { it.title } +
             if (tasks.size > 3) " 等 ${tasks.size} 项" else ""
-        val text = buildString {
-            if (planNames.isNotEmpty()) append("「${planNames.joinToString("、")}」")
-            append("今天有 ${tasks.size} 项未完成：")
-            append(preview)
-        }
-        showNotification("今日学习提醒", text)
+        val text = "「${plan.title}」今天有 ${tasks.size} 项未完成：$preview"
+        showNotification("今日学习提醒 · ${plan.title.take(12)}", text)
         Result.success()
     }
 
@@ -74,12 +74,13 @@ class DailyReminderWorker(
             .setContentIntent(pending)
             .setAutoCancel(true)
             .build()
-        runCatching { nm.notify(NOTIFY_ID, notification) }
+        runCatching { nm.notify(NOTIFY_ID_BASE + (inputData.getLong(KEY_PLAN_ID, 0) % 500).toInt(), notification) }
     }
 
     companion object {
         const val CHANNEL_ID = "daily_plan_reminder"
-        const val NOTIFY_ID = 1001
+        const val NOTIFY_ID_BASE = 1000
+        const val KEY_PLAN_ID = "plan_id"
 
         fun ensureChannel(context: Context) {
             val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -95,26 +96,27 @@ class DailyReminderWorker(
     }
 }
 
-/** 用 WorkManager 做每日定时（无需精准闹钟权限，设备重启后自动恢复） */
+/** 每个计划独立的每日定时提醒（WorkManager 周期任务，重启自动恢复） */
 object ReminderScheduler {
-    private const val WORK_NAME = "daily_plan_reminder"
+    private fun workName(planId: Long) = "daily_plan_reminder_$planId"
 
-    /** 按 hour:minute 安排每日检查；先取消旧任务再以新时刻重排 */
-    fun schedule(context: Context, hour: Int, minute: Int) {
+    /** 为某个计划按 hour:minute 安排每日检查 */
+    fun schedule(context: Context, planId: Long, hour: Int, minute: Int) {
         DailyReminderWorker.ensureChannel(context)
         val now = LocalDateTime.now()
         var next = now.toLocalDate().atTime(LocalTime.of(hour, minute))
         if (!next.isAfter(now)) next = next.plusDays(1)
         val request = PeriodicWorkRequestBuilder<DailyReminderWorker>(Duration.ofHours(24))
             .setInitialDelay(Duration.between(now, next))
+            .setInputData(workDataOf(DailyReminderWorker.KEY_PLAN_ID to planId))
             .build()
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-            WORK_NAME, ExistingPeriodicWorkPolicy.UPDATE, request,
+            workName(planId), ExistingPeriodicWorkPolicy.UPDATE, request,
         )
     }
 
-    fun cancel(context: Context) {
-        WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME)
+    fun cancel(context: Context, planId: Long) {
+        WorkManager.getInstance(context).cancelUniqueWork(workName(planId))
     }
 }
 

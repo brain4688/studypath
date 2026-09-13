@@ -15,6 +15,7 @@ class AppContainer(app: Application) {
         taskDao = database.taskDao(),
         configDao = database.apiConfigDao(),
         chatDao = database.chatDao(),
+        deliveryDao = database.deliveryDao(),
     )
 }
 

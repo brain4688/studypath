@@ -5,6 +5,8 @@ import com.studypath.app.data.db.ApiConfigDao
 import com.studypath.app.data.db.ApiConfigEntity
 import com.studypath.app.data.db.ChatDao
 import com.studypath.app.data.db.ChatMessageEntity
+import com.studypath.app.data.db.DeliveryDao
+import com.studypath.app.data.db.DeliveryEntity
 import com.studypath.app.data.db.PhaseDao
 import com.studypath.app.data.db.PhaseEntity
 import com.studypath.app.data.db.PhaseWithTasks
@@ -34,6 +36,7 @@ class PlanRepository(
     private val taskDao: TaskDao,
     private val configDao: ApiConfigDao,
     private val chatDao: ChatDao,
+    private val deliveryDao: DeliveryDao,
 ) {
     // ---------- 查询 ----------
 
@@ -132,6 +135,14 @@ class PlanRepository(
     suspend fun clearChat() = chatDao.clear()
 
     suspend fun chatCount(): Int = chatDao.count()
+
+    // ---------- 交付记录 ----------
+
+    fun observeDeliveries(taskId: Long): Flow<List<DeliveryEntity>> = deliveryDao.observeByTask(taskId)
+
+    suspend fun addDelivery(delivery: DeliveryEntity) = deliveryDao.insert(delivery)
+
+    suspend fun deleteDelivery(id: Long) = deliveryDao.deleteById(id)
 
     // ---------- 配置 ----------
 

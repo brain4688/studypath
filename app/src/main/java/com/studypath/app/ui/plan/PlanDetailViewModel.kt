@@ -3,12 +3,17 @@ package com.studypath.app.ui.plan
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.studypath.app.core.PlanParser
+import com.studypath.app.core.ai.AiTask
 import com.studypath.app.core.ai.PlanPrompts
 import com.studypath.app.core.export.XlsxWriter
 import com.studypath.app.data.api.AiClient
+import com.studypath.app.data.api.ChatMessage
 import com.studypath.app.data.db.ApiConfigEntity
+import com.studypath.app.data.db.DeliveryEntity
 import com.studypath.app.data.db.PhaseWithTasks
 import com.studypath.app.data.db.PlanEntity
+import com.studypath.app.data.reminder.ReminderPrefs
+import com.studypath.app.data.reminder.ReminderScheduler
 import com.studypath.app.data.repo.PlanRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -25,6 +30,8 @@ data class PlanDetailUi(
     /** 今天未完成的任务数与总分钟数（按计划日期） */
     val todayCount: Int = 0,
     val todayMinutes: Int = 0,
+    /** 当前应学习的阶段序号（第一个包含今天任务的阶段，否则第一个未完成的阶段） */
+    val currentPhaseOrder: Int = 0,
 )
 
 sealed interface ReplanState {
@@ -32,6 +39,20 @@ sealed interface ReplanState {
     data object Loading : ReplanState
     data class Error(val message: String) : ReplanState
     data object Done : ReplanState
+}
+
+/** 任务 AI 教练会话状态 */
+sealed interface CoachState {
+    data object Closed : CoachState
+    /** 打开的任务（任务名 + 所属阶段名） */
+    data class Open(
+        val task: AiTask,
+        val label: String,
+        val planTitle: String,
+        val messages: List<ChatMessage> = emptyList(),
+        val loading: Boolean = false,
+        val error: String? = null,
+    ) : CoachState
 }
 
 class PlanDetailViewModel(
@@ -47,16 +68,111 @@ class PlanDetailViewModel(
             val today = java.time.LocalDate.now().toEpochDay()
             val todayTasks = phases.flatMap { it.tasks }
                 .filter { it.scheduledDate == today && it.progress < 100 }
+            val currentOrder = (phases.firstOrNull { p -> p.tasks.any { it.scheduledDate == today } }
+                ?: phases.firstOrNull { p -> p.tasks.any { it.progress < 100 } }
+                ?: phases.firstOrNull())?.phase?.orderIndex ?: 0
             PlanDetailUi(
                 plan, phases,
                 com.studypath.app.core.ProgressCalculator.percent(weighted, total),
                 todayCount = todayTasks.size,
                 todayMinutes = todayTasks.sumOf { it.estimatedMinutes },
+                currentPhaseOrder = currentOrder,
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), PlanDetailUi())
 
     private val _replanState = MutableStateFlow<ReplanState>(ReplanState.Idle)
     val replanState: StateFlow<ReplanState> = _replanState
+
+    private val _coach = MutableStateFlow<CoachState>(CoachState.Closed)
+    val coach: StateFlow<CoachState> = _coach
+
+    /** 已展开的阶段 id 集合；空集表示尚未初始化（由 UI 决定默认展开） */
+    private val _expandedPhases = MutableStateFlow<Set<Long>?>(null)
+    val expandedPhases: StateFlow<Set<Long>?> = _expandedPhases
+
+    fun togglePhase(phaseId: Long) {
+        val cur = _expandedPhases.value ?: emptySet()
+        _expandedPhases.value = if (phaseId in cur) cur - phaseId else cur + phaseId
+    }
+
+    fun setAllExpanded(expandAll: Boolean, ids: List<Long>) {
+        _expandedPhases.value = if (expandAll) ids.toSet() else emptySet()
+    }
+
+    // ---------- 任务 AI 教练 ----------
+
+    fun openCoach(phaseTitle: String, index: Int, task: com.studypath.app.data.db.TaskEntity) {
+        val t = AiTask(
+            title = task.title, detail = task.detail, method = task.method,
+            deliverable = task.deliverable, checkpoint = task.checkpoint,
+            pitfall = task.pitfall, resource = task.resource, estimatedMinutes = task.estimatedMinutes,
+        )
+        _coach.value = CoachState.Open(
+            task = t,
+            label = "T${index + 1}（${phaseTitle}）",
+            planTitle = ui.value.plan?.title ?: "",
+        )
+    }
+
+    fun closeCoach() { _coach.value = CoachState.Closed }
+
+    fun askCoach(question: String) {
+        val cur = _coach.value as? CoachState.Open ?: return
+        if (question.isBlank() || cur.loading) return
+        viewModelScope.launch {
+            _coach.value = cur.copy(loading = true, error = null)
+            val history = cur.messages + ChatMessage("user", question.trim())
+            val config: ApiConfigEntity? = repository.observeDefaultConfig().first()
+            if (config == null) {
+                _coach.value = cur.copy(
+                    messages = history, loading = false,
+                    error = "尚未配置模型 API，请先到「设置」添加",
+                )
+                return@launch
+            }
+            val system = PlanPrompts.taskCoachSystem(cur.planTitle, cur.task, cur.label)
+            val messages = listOf(ChatMessage("system", system)) + history
+            aiClient.complete(config, messages).fold(
+                onSuccess = { reply ->
+                    _coach.value = CoachState.Open(
+                        task = cur.task, label = cur.label, planTitle = cur.planTitle,
+                        messages = history + ChatMessage("assistant", reply.trim()),
+                    )
+                },
+                onFailure = { e ->
+                    _coach.value = cur.copy(messages = history, loading = false, error = "发送失败：${e.message}")
+                },
+            )
+        }
+    }
+
+    // ---------- 交付记录 ----------
+
+    fun observeDeliveries(taskId: Long) = repository.observeDeliveries(taskId)
+
+    fun addDelivery(taskId: Long, text: String, imagePath: String?) {
+        if (text.isBlank() && imagePath == null) return
+        viewModelScope.launch {
+            repository.addDelivery(
+                DeliveryEntity(taskId = taskId, planId = planId, text = text.trim(), imagePath = imagePath)
+            )
+        }
+    }
+
+    fun deleteDelivery(id: Long) {
+        viewModelScope.launch { repository.deleteDelivery(id) }
+    }
+
+    // ---------- 每计划独立提醒 ----------
+
+    fun loadReminder(context: android.content.Context): Pair<Boolean, Pair<Int, Int>> =
+        ReminderPrefs.isEnabled(context, planId) to ReminderPrefs.time(context, planId)
+
+    fun setReminder(context: android.content.Context, enabled: Boolean, hour: Int, minute: Int) {
+        ReminderPrefs.save(context, planId, enabled, hour, minute)
+        if (enabled) ReminderScheduler.schedule(context, planId, hour, minute)
+        else ReminderScheduler.cancel(context, planId)
+    }
 
     fun setTaskProgress(taskId: Long, progress: Int) {
         viewModelScope.launch { repository.setTaskProgress(taskId, progress) }

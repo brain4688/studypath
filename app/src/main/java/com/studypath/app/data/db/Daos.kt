@@ -61,6 +61,18 @@ interface ChatDao {
 }
 
 @Dao
+interface DeliveryDao {
+    @Query("SELECT * FROM deliveries WHERE taskId = :taskId ORDER BY createdAt DESC")
+    fun observeByTask(taskId: Long): Flow<List<DeliveryEntity>>
+
+    @Insert
+    suspend fun insert(delivery: DeliveryEntity): Long
+
+    @Query("DELETE FROM deliveries WHERE id = :id")
+    suspend fun deleteById(id: Long)
+}
+
+@Dao
 interface PlanDao {
     @Query("SELECT * FROM plans ORDER BY createdAt DESC")
     fun observeAll(): Flow<List<PlanEntity>>
@@ -110,6 +122,9 @@ interface TaskDao {
 
     @Query("SELECT * FROM tasks WHERE scheduledDate = :epochDay AND progress < 100 ORDER BY orderIndex ASC")
     suspend fun getTodayUnfinished(epochDay: Long): List<TaskEntity>
+
+    @Query("SELECT * FROM tasks WHERE scheduledDate = :epochDay AND progress < 100 AND planId = :planId ORDER BY orderIndex ASC")
+    suspend fun getTodayUnfinishedByPlan(epochDay: Long, planId: Long): List<TaskEntity>
 
     @Query("DELETE FROM tasks WHERE planId = :planId AND progress < 100")
     suspend fun deleteUnfinished(planId: Long)
