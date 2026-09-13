@@ -106,6 +106,13 @@ interface PhaseDao {
     suspend fun deleteEmptyPhases(planId: Long)
 }
 
+/** 今日任务页的聚合行：任务 + 所属计划名 + 所属阶段名 */
+data class TodayTaskRow(
+    @Embedded val task: TaskEntity,
+    val planTitle: String,
+    val phaseTitle: String,
+)
+
 @Dao
 interface TaskDao {
     @Insert
@@ -125,6 +132,15 @@ interface TaskDao {
 
     @Query("SELECT * FROM tasks WHERE scheduledDate = :epochDay AND progress < 100 AND planId = :planId ORDER BY orderIndex ASC")
     suspend fun getTodayUnfinishedByPlan(epochDay: Long, planId: Long): List<TaskEntity>
+
+    @Query(
+        "SELECT t.*, p.title AS planTitle, ph.title AS phaseTitle FROM tasks t " +
+            "JOIN plans p ON t.planId = p.id " +
+            "JOIN phases ph ON t.phaseId = ph.id " +
+            "WHERE t.scheduledDate = :epochDay " +
+            "ORDER BY t.progress ASC, t.planId ASC, ph.orderIndex ASC, t.orderIndex ASC"
+    )
+    fun observeByDay(epochDay: Long): Flow<List<TodayTaskRow>>
 
     @Query("DELETE FROM tasks WHERE planId = :planId AND progress < 100")
     suspend fun deleteUnfinished(planId: Long)

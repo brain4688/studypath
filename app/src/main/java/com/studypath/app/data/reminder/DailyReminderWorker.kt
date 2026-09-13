@@ -37,6 +37,7 @@ class DailyReminderWorker(
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val planId = inputData.getLong(KEY_PLAN_ID, -1L)
         if (planId <= 0) return@withContext Result.success()
+        if (!ReminderPrefs.isGlobalEnabled(applicationContext)) return@withContext Result.success()
         if (!ReminderPrefs.isEnabled(applicationContext, planId)) return@withContext Result.success()
 
         val db = AppDatabase.get(applicationContext)

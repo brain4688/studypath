@@ -101,8 +101,18 @@ fun PlanDetailScreen(
     var showExportDialog by remember { mutableStateOf(false) }
     var showReminderDialog by remember { mutableStateOf(false) }
     var showDeliveryFor by remember { mutableStateOf<TaskEntity?>(null) }
-    val coach by viewModel.coach.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+
+    /** 计算某阶段 header 在 LazyColumn 中的 item 下标（0=总进度卡 1=路线图 2=展开控制行） */
+    fun phaseItemIndex(targetId: Long, phases: List<PhaseWithTasks>, expanded: Set<Long>): Int {
+        var idx = 3
+        for (p in phases) {
+            if (p.phase.id == targetId) return idx
+            idx += 1 + if (p.phase.id in expanded) p.tasks.size else 0
+        }
+        return idx
+    }
     val expandedPhases by viewModel.expandedPhases.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
 
@@ -158,8 +168,10 @@ fun PlanDetailScreen(
             item { OverviewCard(ui = ui) }
             if (ui.phases.isNotEmpty()) {
                 item { RouteMap(ui = ui, onPhaseClick = { id ->
-                    // 点击路线节点：仅展开该阶段
+                    // 点击路线节点：展开该阶段并滚动定位
                     viewModel.setAllExpanded(expandAll = false, ids = listOf(id))
+                    val index = phaseItemIndex(id, ui.phases, setOf(id))
+                    scope.launch { listState.animateScrollToItem(index) }
                 }) }
                 item {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -203,7 +215,6 @@ fun PlanDetailScreen(
                             task = task,
                             index = idx,
                             onProgress = { p -> viewModel.setTaskProgress(task.id, p) },
-                            onAskAi = { viewModel.openCoach(phase.phase.title, idx, task) },
                             onDelivery = { showDeliveryFor = task },
                         )
                     }
@@ -242,7 +253,7 @@ fun PlanDetailScreen(
         )
     }
     showDeliveryFor?.let { task ->
-        DeliveryDialog(
+        com.studypath.app.ui.components.DeliveryDialogShared(
             taskId = task.id,
             taskTitle = task.title,
             onDismiss = { showDeliveryFor = null },
@@ -257,14 +268,6 @@ fun PlanDetailScreen(
             loadState = { viewModel.loadReminder(it) },
             onSave = { enabled, h, m -> viewModel.setReminder(context, enabled, h, m) },
         )
-    }
-    when (val c = coach) {
-        is CoachState.Open -> TaskCoachDialog(
-            state = c,
-            onDismiss = { viewModel.closeCoach() },
-            onAsk = { viewModel.askCoach(it) },
-        )
-        else -> Unit
     }
 }
 
@@ -284,15 +287,6 @@ private fun OverviewCard(ui: PlanDetailUi) {
             )
             Spacer(Modifier.height(4.dp))
             Text(ui.plan?.title ?: "", style = MaterialTheme.typography.titleLarge)
-            if (!ui.plan?.overview.isNullOrBlank()) {
-                Text(
-                    ui.plan!!.overview,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 4,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
             Spacer(Modifier.height(14.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 com.studypath.app.ui.theme.PaperProgressBar(
@@ -372,7 +366,6 @@ private fun TaskItem(
     task: TaskEntity,
     index: Int,
     onProgress: (Int) -> Unit,
-    onAskAi: () -> Unit,
     onDelivery: () -> Unit,
 ) {
     var expanded by remember(task.id) { mutableStateOf(false) }
@@ -481,18 +474,8 @@ private fun TaskItem(
                         .padding(horizontal = 10.dp, vertical = 8.dp),
                 )
             }
-            // 工具行：AI 教练 + 交付记录
+            // 工具行：交付记录
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
-                TextButton(
-                    onClick = onAskAi,
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                ) {
-                    Icon(Icons.Default.School, contentDescription = null, modifier = Modifier.size(15.dp),
-                        tint = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.width(4.dp))
-                    Text("问 AI 怎么做", style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary)
-                }
                 TextButton(
                     onClick = onDelivery,
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp),
@@ -747,246 +730,6 @@ private fun RouteMap(ui: PlanDetailUi, onPhaseClick: (Long) -> Unit) {
         }
     }
 }
-
-/** 任务 AI 执行教练：带着任务完整上下文的多轮问答 */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun TaskCoachDialog(
-    state: CoachState.Open,
-    onDismiss: () -> Unit,
-    onAsk: (String) -> Unit,
-) {
-    var input by remember { mutableStateOf("") }
-    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
-    LaunchedEffect(state.messages.size, state.loading) {
-        if (state.messages.isNotEmpty()) listState.animateScrollToItem(state.messages.size - 1)
-    }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("执行教练 · ${state.label}", style = MaterialTheme.typography.titleMedium) },
-        text = {
-            Column {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxWidth().height(360.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    item {
-                        Text(
-                            "「${state.task.title}」",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                        Text(
-                            state.task.detail.ifBlank { state.task.method },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        HorizontalDivider(
-                            modifier = Modifier.padding(top = 6.dp),
-                            color = MaterialTheme.colorScheme.outline,
-                        )
-                    }
-                    items(state.messages) { m ->
-                        if (m.role == "user") {
-                            Text(
-                                "我：${m.content}",
-                                style = MaterialTheme.typography.bodySmall,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        } else {
-                            Text(
-                                m.content,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(
-                                        MaterialTheme.colorScheme.surfaceVariant,
-                                        RoundedCornerShape(10.dp),
-                                    )
-                                    .padding(10.dp),
-                            )
-                        }
-                    }
-                    if (state.loading) {
-                        item {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-                                Spacer(Modifier.width(8.dp))
-                                Text("教练思考中…", style = MaterialTheme.typography.bodySmall)
-                            }
-                        }
-                    }
-                    state.error?.let {
-                        item { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
-                    }
-                }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    modifier = Modifier.padding(top = 8.dp),
-                ) {
-                    OutlinedTextField(
-                        value = input,
-                        onValueChange = { input = it },
-                        placeholder = { Text("例如：第一步具体做什么？") },
-                        modifier = Modifier.weight(1f),
-                        textStyle = MaterialTheme.typography.bodySmall,
-                        maxLines = 3,
-                    )
-                    IconButton(
-                        onClick = { onAsk(input); input = "" },
-                        enabled = input.isNotBlank() && !state.loading,
-                    ) { Icon(Icons.AutoMirrored.Filled.Send, "发送") }
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
-    )
-}
-
-/** 交付记录：文字 + 图片，学习成果凭证 */
-@Composable
-private fun DeliveryDialog(
-    taskId: Long,
-    taskTitle: String,
-    onDismiss: () -> Unit,
-    onAdd: (String, String?) -> Unit,
-    onDelete: (Long) -> Unit,
-    observe: (Long) -> kotlinx.coroutines.flow.Flow<List<DeliveryEntity>>,
-) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var text by remember { mutableStateOf("") }
-    var pendingImage by remember { mutableStateOf<String?>(null) }
-    val deliveries by observe(taskId).collectAsStateWithLifecycle(initialValue = emptyList())
-
-    val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) {
-            scope.launch {
-                val copied = withContext(Dispatchers.IO) {
-                    runCatching {
-                        val dir = File(context.filesDir, "deliveries").apply { mkdirs() }
-                        val file = File(dir, "d_${taskId}_${System.currentTimeMillis()}.jpg")
-                        context.contentResolver.openInputStream(uri)?.use { input ->
-                            file.outputStream().use { output -> input.copyTo(output) }
-                        }
-                        file.absolutePath
-                    }.getOrNull()
-                }
-                pendingImage = copied
-                if (copied == null) Toast.makeText(context, "读取图片失败", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("交付记录", style = MaterialTheme.typography.titleMedium) },
-        text = {
-            Column {
-                Text(
-                    "「${taskTitle}」",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis,
-                )
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth().height(300.dp).padding(top = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    if (deliveries.isEmpty()) {
-                        item {
-                            Text(
-                                "还没有交付记录。完成任务后把成果（一段总结、笔记截图、看板链接…）存到这里，直观看见自己的学习轨迹。",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                    items(deliveries, key = { it.id }) { d ->
-                        Card(
-                            shape = RoundedCornerShape(10.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                        ) {
-                            Column(Modifier.padding(10.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        DateTimeFormatter.ofPattern("MM-dd HH:mm")
-                                            .format(java.time.Instant.ofEpochMilli(d.createdAt)
-                                                .atZone(java.time.ZoneId.systemDefault())),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                    Spacer(Modifier.weight(1f))
-                                    TextButton(
-                                        onClick = { onDelete(d.id) },
-                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 0.dp),
-                                    ) {
-                                        Icon(Icons.Default.Delete, "删除", Modifier.size(14.dp),
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    }
-                                }
-                                if (d.text.isNotBlank()) Text(d.text, style = MaterialTheme.typography.bodySmall)
-                                d.imagePath?.let { path ->
-                                    val bmp = remember(path) {
-                                        runCatching {
-                                            BitmapFactory.decodeFile(path)?.let {
-                                                val s = 1024f / maxOf(it.width, it.height).coerceAtLeast(1)
-                                                Bitmap.createScaledBitmap(
-                                                    it,
-                                                    (it.width * s).toInt().coerceAtLeast(1),
-                                                    (it.height * s).toInt().coerceAtLeast(1),
-                                                    true,
-                                                )
-                                            }
-                                        }.getOrNull()
-                                    }
-                                    if (bmp != null) {
-                                        Image(
-                                            bitmap = bmp.asImageBitmap(),
-                                            contentDescription = "交付图片",
-                                            contentScale = ContentScale.Crop,
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .height(160.dp)
-                                                .padding(top = 6.dp),
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    modifier = Modifier.padding(top = 8.dp),
-                ) {
-                    OutlinedTextField(
-                        value = text,
-                        onValueChange = { text = it },
-                        placeholder = { Text("写下这段学习的成果或心得…") },
-                        modifier = Modifier.weight(1f),
-                        textStyle = MaterialTheme.typography.bodySmall,
-                        minLines = 1,
-                        maxLines = 3,
-                    )
-                    IconButton(onClick = { pickImage.launch("image/*") }) {
-                        Icon(Icons.Default.Add, "添加图片")
-                    }
-                    Button(
-                        onClick = { onAdd(text, pendingImage); text = ""; pendingImage = null },
-                        enabled = text.isNotBlank() || pendingImage != null,
-                    ) { Text("保存") }
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
-    )
-}
-
 /** 每计划独立的提醒设置 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

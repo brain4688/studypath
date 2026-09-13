@@ -13,3 +13,4 @@ app/src/main/assets/api_keys.json
 keystore.properties
 *.keystore
 *.jks
+.kotlin/

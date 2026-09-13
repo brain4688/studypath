@@ -41,10 +41,7 @@ class PlanRepository(
     // ---------- 查询 ----------
 
     fun observePlans(): Flow<List<PlanCard>> =
-        kotlinx.coroutines.flow.combine(
-            planDao.observeAll(),
-            taskDao.observePlanProgress(),
-        ) { plans, rows ->
+        combine(planDao.observeAll(), taskDao.observePlanProgress()) { plans, rows ->
             val byId = rows.associateBy { it.planId }
             plans.map { plan ->
                 val row = byId[plan.id]
@@ -56,6 +53,10 @@ class PlanRepository(
                 )
             }
         }
+
+    /** 今天（某日期）的全部任务，跨计划聚合 */
+    fun observeTasksByDay(epochDay: Long): Flow<List<com.studypath.app.data.db.TodayTaskRow>> =
+        taskDao.observeByDay(epochDay)
 
     fun observePlan(id: Long): Flow<PlanEntity?> = planDao.observeById(id)
 

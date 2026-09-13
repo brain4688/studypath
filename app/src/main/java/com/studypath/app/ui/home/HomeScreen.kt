@@ -24,11 +24,13 @@ import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -39,6 +41,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -65,13 +68,13 @@ fun HomeScreen(
     onNewPlan: () -> Unit,
     onCreatePlan: () -> Unit,
     onOpenPlan: (Long) -> Unit,
-    onOpenSettings: () -> Unit,
 ) {
     val plans by viewModel.plans.collectAsStateWithLifecycle()
     val defaultConfig by viewModel.defaultConfig.collectAsStateWithLifecycle()
     val importState by viewModel.importState.collectAsStateWithLifecycle()
 
     var showImportDialog by remember { mutableStateOf(false) }
+    var showFabMenu by remember { mutableStateOf(false) }
 
     LaunchedEffect(importState) {
         val s = importState
@@ -83,12 +86,16 @@ fun HomeScreen(
     }
 
     Scaffold(
+        topBar = {
+            TopAppBar(title = { Text("StudyPath", style = MaterialTheme.typography.titleLarge) })
+        },
         floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = onNewPlan,
-                icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                text = { Text("AI 规划学习") },
-            )
+            FloatingActionButton(
+                onClick = { showFabMenu = true },
+                containerColor = MaterialTheme.colorScheme.primary,
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "新建计划", tint = MaterialTheme.colorScheme.onPrimary)
+            }
         },
     ) { padding ->
         LazyColumn(
@@ -98,41 +105,53 @@ fun HomeScreen(
         ) {
             item {
                 Column {
-                    Text(
-                        "STUDYPATH · 让 AI 为你规划每一段学习",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.tertiary,
-                    )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 defaultConfig?.let { "当前模型：${it.name} · ${it.model}" }
-                                    ?: "尚未配置模型，请先在设置中添加",
+                                    ?: "尚未配置模型，可在「我的 → 模型设置」中添加",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                        IconButton(onClick = onCreatePlan) {
-                            Icon(Icons.Default.EditNote, contentDescription = "手动创建计划")
-                        }
                         IconButton(onClick = { showImportDialog = true }) {
                             Icon(Icons.Default.UploadFile, contentDescription = "导入计划")
-                        }
-                        IconButton(onClick = onOpenSettings) {
-                            Icon(Icons.Default.Settings, contentDescription = "模型设置")
                         }
                     }
                 }
             }
 
             if (plans.isEmpty()) {
-                item { EmptyHint(hasConfig = defaultConfig != null, onOpenSettings = onOpenSettings) }
+                item { EmptyHint(hasConfig = defaultConfig != null) }
             } else {
                 items(plans, key = { it.plan.id }) { card ->
                     PlanCardItem(card = card, onClick = { onOpenPlan(card.plan.id) })
                 }
             }
         }
+    }
+
+    if (showFabMenu) {
+        AlertDialog(
+            onDismissRequest = { showFabMenu = false },
+            title = { Text("新建学习计划") },
+            text = {
+                Text(
+                    "让 AI 通过对话了解你的需求后生成计划；或者你自己动手搭建。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            },
+            confirmButton = {
+                Button(onClick = { showFabMenu = false; onNewPlan() }) { Text("AI 规划（推荐）") }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { showFabMenu = false; onCreatePlan() },
+                    modifier = Modifier.padding(end = 8.dp),
+                ) { Text("手动创建") }
+            },
+        )
     }
 
     if (showImportDialog) {
@@ -146,7 +165,7 @@ fun HomeScreen(
 }
 
 @Composable
-private fun EmptyHint(hasConfig: Boolean, onOpenSettings: () -> Unit) {
+private fun EmptyHint(hasConfig: Boolean) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(top = 80.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -161,7 +180,8 @@ private fun EmptyHint(hasConfig: Boolean, onOpenSettings: () -> Unit) {
         )
         Spacer(Modifier.height(16.dp))
         if (!hasConfig) {
-            Button(onClick = onOpenSettings) { Text("先去配置模型 API") }
+            Text("第一步：到「我的 → 模型设置」配置 AI", style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -172,10 +192,14 @@ private fun PlanCardItem(card: PlanCard, onClick: () -> Unit) {
     val dateText = remember(card.plan.createdAt) {
         SimpleDateFormat("yyyy.MM.dd", Locale.getDefault()).format(Date(card.plan.createdAt))
     }
+    val isDone = card.percent >= 100
     Card(
         onClick = onClick,
         shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isDone) MaterialTheme.colorScheme.surfaceVariant
+            else MaterialTheme.colorScheme.surface,
+        ),
         border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         modifier = Modifier.fillMaxWidth(),
@@ -190,12 +214,16 @@ private fun PlanCardItem(card: PlanCard, onClick: () -> Unit) {
                 Spacer(Modifier.width(9.dp))
                 Card(
                     shape = androidx.compose.foundation.shape.RoundedCornerShape(99.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isDone) MaterialTheme.colorScheme.outline
+                        else MaterialTheme.colorScheme.primaryContainer,
+                    ),
                 ) {
                     Text(
-                        "计划",
+                        if (isDone) "已完成" else "进行中",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        color = if (isDone) MaterialTheme.colorScheme.onSurfaceVariant
+                        else MaterialTheme.colorScheme.onPrimaryContainer,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                     )
                 }
