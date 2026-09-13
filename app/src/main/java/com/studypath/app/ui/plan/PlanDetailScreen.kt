@@ -102,19 +102,7 @@ fun PlanDetailScreen(
     var showReminderDialog by remember { mutableStateOf(false) }
     var showDeliveryFor by remember { mutableStateOf<TaskEntity?>(null) }
     val context = LocalContext.current
-    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
-
-    /** 计算某阶段 header 在 LazyColumn 中的 item 下标（0=总进度卡 1=路线图 2=展开控制行） */
-    fun phaseItemIndex(targetId: Long, phases: List<PhaseWithTasks>, expanded: Set<Long>): Int {
-        var idx = 3
-        for (p in phases) {
-            if (p.phase.id == targetId) return idx
-            idx += 1 + if (p.phase.id in expanded) p.tasks.size else 0
-        }
-        return idx
-    }
     val expandedPhases by viewModel.expandedPhases.collectAsStateWithLifecycle()
-    val scope = rememberCoroutineScope()
 
     // 折叠默认态：首次进入只展开当前阶段
     LaunchedEffect(ui.phases) {
@@ -165,12 +153,6 @@ fun PlanDetailScreen(
         ) {
             item { OverviewCard(ui = ui) }
             if (ui.phases.isNotEmpty()) {
-                item { RouteMap(ui = ui, onPhaseClick = { id ->
-                    // 点击路线节点：展开该阶段并滚动定位
-                    viewModel.setAllExpanded(expandAll = false, ids = listOf(id))
-                    val index = phaseItemIndex(id, ui.phases, setOf(id))
-                    scope.launch { listState.animateScrollToItem(index) }
-                }) }
                 item {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         val allIds = ui.phases.map { it.phase.id }
@@ -343,7 +325,8 @@ private fun PhaseHeader(phase: PhaseWithTasks, expanded: Boolean, onToggle: () -
             Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
                 Text(
-                    "${phase.phase.title}（$rangeText）",
+                    if (rangeText.isBlank()) phase.phase.title
+                    else "${phase.phase.title}（$rangeText）",
                     style = MaterialTheme.typography.titleSmall,
                 )
                 Text(
@@ -641,93 +624,6 @@ private fun ExportDialog(
     )
 }
 
-/** 阶段路线流程图：横向节点条，已完成✓ / 当前进行中高亮 / 未开始空心 */
-@Composable
-private fun RouteMap(ui: PlanDetailUi, onPhaseClick: (Long) -> Unit) {
-    LazyRow(
-        horizontalArrangement = Arrangement.spacedBy(0.dp),
-    ) {
-        items(ui.phases, key = { it.phase.id }) { phase ->
-            val allDone = phase.tasks.isNotEmpty() && phase.tasks.all { it.progress >= 100 }
-            val isCurrent = phase.phase.orderIndex == ui.currentPhaseOrder && !allDone
-            val days = phase.tasks.map { it.scheduledDate }.filter { it > 0 }
-            val range = if (days.isNotEmpty()) {
-                val s = LocalDate.ofEpochDay(days.min())
-                val e = LocalDate.ofEpochDay(days.max())
-                "${s.monthValue}.${s.dayOfMonth}"
-            } else ""
-            val done = phase.tasks.count { it.progress >= 100 }
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.width(96.dp).padding(vertical = 4.dp),
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    // 左侧连线
-                    Box(
-                        Modifier
-                            .weight(1f)
-                            .height(2.dp)
-                            .background(MaterialTheme.colorScheme.outline),
-                    )
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier
-                            .size(30.dp)
-                            .border(
-                                width = 2.dp,
-                                color = when {
-                                    allDone -> MaterialTheme.colorScheme.primary
-                                    isCurrent -> MaterialTheme.colorScheme.primary
-                                    else -> MaterialTheme.colorScheme.outline
-                                },
-                                shape = CircleShape,
-                            )
-                            .background(
-                                if (allDone) MaterialTheme.colorScheme.primary else Color.Transparent,
-                                CircleShape,
-                            ),
-                    ) {
-                        Text(
-                            if (allDone) "✓" else "${phase.phase.orderIndex + 1}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (allDone) MaterialTheme.colorScheme.onPrimary
-                            else if (isCurrent) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    Box(
-                        Modifier
-                            .weight(1f)
-                            .height(2.dp)
-                            .background(MaterialTheme.colorScheme.outline),
-                    )
-                }
-                Text(
-                    phase.phase.title,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (isCurrent) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 6.dp),
-                )
-                Text(
-                    buildString {
-                        append(range)
-                        append(" · ")
-                        append("${done}/${phase.tasks.size}")
-                    },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                TextButton(
-                    onClick = { onPhaseClick(phase.phase.id) },
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 0.dp),
-                ) { Text("查看", style = MaterialTheme.typography.labelSmall) }
-            }
-        }
-    }
-}
 /** 每计划独立的提醒设置 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
