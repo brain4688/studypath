@@ -54,18 +54,10 @@ fun TodayScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text("今日任务")
-                        Text(
-                            "${today.monthValue}月${today.dayOfMonth}日 · 共 ${tasks.size} 项 · " +
-                                "未完成 ${tasks.count { it.task.progress < 100 }} 项",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                },
+            com.studypath.app.ui.theme.PaperTopBar(
+                title = "今日任务",
+                subtitle = "${today.monthValue}月${today.dayOfMonth}日 · 共 ${tasks.size} 项 · " +
+                    "未完成 ${tasks.count { it.task.progress < 100 }} 项",
             )
         },
     ) { padding ->

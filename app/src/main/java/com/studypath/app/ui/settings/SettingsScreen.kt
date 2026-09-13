@@ -51,7 +51,7 @@ import com.studypath.app.data.api.ProviderPresets
 import com.studypath.app.data.db.ApiConfigEntity
 
 @Composable
-fun SettingsScreen(viewModel: SettingsViewModel) {
+fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
     val configs by viewModel.configs.collectAsStateWithLifecycle()
     val testResult by viewModel.testResult.collectAsStateWithLifecycle()
     val testingId by viewModel.testingId.collectAsStateWithLifecycle()
@@ -61,6 +61,7 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
     var deleting by remember { mutableStateOf<ApiConfigEntity?>(null) }
 
     Scaffold(
+        topBar = { com.studypath.app.ui.theme.PaperTopBar(title = "模型设置", onBack = onBack) },
         floatingActionButton = {
             FloatingActionButton(onClick = { editing = null; showEditor = true }) {
                 Icon(Icons.Default.Add, "新增配置")

@@ -76,13 +76,9 @@ fun ChatScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("AI 学习规划师") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                    }
-                },
+            com.studypath.app.ui.theme.PaperTopBar(
+                title = "AI 学习规划师",
+                onBack = onBack,
                 actions = {
                     if (state is ChatUiState.Planning) {
                         CircularProgressIndicator(

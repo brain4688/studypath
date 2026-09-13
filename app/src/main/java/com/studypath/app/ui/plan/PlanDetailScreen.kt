@@ -132,23 +132,21 @@ fun PlanDetailScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(ui.plan?.title ?: "计划详情", maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") }
-                },
+            com.studypath.app.ui.theme.PaperTopBar(
+                title = ui.plan?.title ?: "计划详情",
+                onBack = onBack,
                 actions = {
-                    IconButton(onClick = { showReminderDialog = true }) {
-                        Icon(Icons.Default.Notifications, "提醒设置")
+                    IconButton(onClick = { showReminderDialog = true }, modifier = Modifier.size(38.dp)) {
+                        Icon(Icons.Default.Notifications, "提醒设置", Modifier.size(20.dp))
                     }
-                    IconButton(onClick = { showExportDialog = true }) {
-                        Icon(Icons.Default.SaveAlt, "导出计划")
+                    IconButton(onClick = { showExportDialog = true }, modifier = Modifier.size(38.dp)) {
+                        Icon(Icons.Default.SaveAlt, "导出计划", Modifier.size(20.dp))
                     }
-                    IconButton(onClick = { showReplanDialog = true }) {
-                        Icon(Icons.Default.Autorenew, "AI 调整计划")
+                    IconButton(onClick = { showReplanDialog = true }, modifier = Modifier.size(38.dp)) {
+                        Icon(Icons.Default.Autorenew, "AI 调整计划", Modifier.size(20.dp))
                     }
-                    IconButton(onClick = { showDeleteDialog = true }) {
-                        Icon(Icons.Default.Delete, "删除计划")
+                    IconButton(onClick = { showDeleteDialog = true }, modifier = Modifier.size(38.dp)) {
+                        Icon(Icons.Default.Delete, "删除计划", Modifier.size(20.dp))
                     }
                 },
             )

@@ -43,6 +43,7 @@ class MineViewModel : ViewModel() {
     companion object {
         const val GITHUB_URL = "https://github.com/brain4688/studypath"
         const val RELEASES_URL = "https://github.com/brain4688/studypath/releases/latest"
+        const val AUTHOR_URL = "https://github.com/brain4688"
         private const val API_URL = "https://api.github.com/repos/brain4688/studypath/releases/latest"
     }
 

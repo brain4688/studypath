@@ -87,7 +87,7 @@ fun HomeScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("StudyPath", style = MaterialTheme.typography.titleLarge) })
+            com.studypath.app.ui.theme.PaperTopBar(title = "StudyPath")
         },
         floatingActionButton = {
             FloatingActionButton(

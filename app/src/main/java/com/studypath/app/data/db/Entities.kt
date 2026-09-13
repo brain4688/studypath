@@ -72,6 +72,23 @@ data class DeliveryEntity(
     val createdAt: Long = System.currentTimeMillis(),
 )
 
+/** 任务执行教练的历史对话：按任务归属，跨多次执行持续保存 */
+@Entity(
+    tableName = "coach_messages",
+    foreignKeys = [ForeignKey(
+        entity = TaskEntity::class, parentColumns = ["id"],
+        childColumns = ["taskId"], onDelete = ForeignKey.CASCADE,
+    )],
+    indices = [Index("taskId")],
+)
+data class CoachMessageEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val taskId: Long,
+    val role: String,          // "user" / "assistant"
+    val content: String,
+    val createdAt: Long = System.currentTimeMillis(),
+)
+
 /**
  * 小任务：progress 取 0..100，支持"部分完成"。
  * 总进度 = Σ(estimatedMinutes × progress) / Σ(estimatedMinutes)，按预估时长加权。

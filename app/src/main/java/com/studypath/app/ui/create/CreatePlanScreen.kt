@@ -58,11 +58,9 @@ fun CreatePlanScreen(
 ) {
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("手动创建计划") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") }
-                },
+            com.studypath.app.ui.theme.PaperTopBar(
+                title = "手动创建计划",
+                onBack = onBack,
             )
         },
     ) { padding ->

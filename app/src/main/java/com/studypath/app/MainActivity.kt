@@ -176,7 +176,7 @@ fun StudyPathApp() {
                     androidx.lifecycle.viewmodel.compose.viewModel(
                         initializer = { com.studypath.app.ui.settings.SettingsViewModel(container.repository, container.aiClient) },
                     )
-                SettingsScreen(viewModel = vm)
+                SettingsScreen(viewModel = vm, onBack = { navController.popBackStack() })
             }
             composable(
                 Routes.PLAN_DETAIL,

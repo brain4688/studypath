@@ -68,6 +68,7 @@ fun MineScreen(
     val context = LocalContext.current
     val update by viewModel.update.collectAsStateWithLifecycle()
     var showNameEditor by remember { mutableStateOf(false) }
+    var showDonate by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { viewModel.load(context) }
 
@@ -86,7 +87,7 @@ fun MineScreen(
     }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("我的") }) },
+        topBar = { com.studypath.app.ui.theme.PaperTopBar(title = "我的") },
     ) { padding ->
         Column(
             modifier = Modifier
@@ -239,22 +240,68 @@ fun MineScreen(
                     }) { Text(if (update is UpdateState.Available) "去更新" else "检查更新") }
                 }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outline)
-                SettingRow("制作人", "Zane")
-                HorizontalDivider(color = MaterialTheme.colorScheme.outline)
-                SettingRow("GitHub 开源地址", MineViewModel.GITHUB_URL.removePrefix("https://")) {
-                    openUrl(context, MineViewModel.GITHUB_URL)
+                SettingRow("制作人", "Zane · 点击访问作者主页") {
+                    openUrl(context, MineViewModel.AUTHOR_URL)
                 }
             }
 
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "☕ 请作者喝杯咖啡，鼓励一下",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier
+                    .clickable { showDonate = true }
+                    .padding(vertical = 8.dp),
+            )
             Text(
                 "StudyPath · 你的数据只保存在手机本地",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 16.dp),
+                modifier = Modifier.padding(top = 8.dp),
             )
         }
     }
 
+    if (showDonate) {
+        AlertDialog(
+            onDismissRequest = { showDonate = false },
+            title = { Text("请作者喝杯咖啡 ☕") },
+            text = {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                ) {
+                    Text(
+                        "如果 StudyPath 对你的学习有帮助，扫码鼓励一下作者吧～",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Image(
+                        painter = androidx.compose.ui.res.painterResource(
+                            com.studypath.app.R.drawable.donate_wechat
+                        ),
+                        contentDescription = "微信收款码",
+                        modifier = Modifier.fillMaxWidth().height(240.dp),
+                    )
+                    Text("微信", style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(10.dp))
+                    Image(
+                        painter = androidx.compose.ui.res.painterResource(
+                            com.studypath.app.R.drawable.donate_alipay
+                        ),
+                        contentDescription = "支付宝收款码",
+                        modifier = Modifier.fillMaxWidth().height(240.dp),
+                    )
+                    Text("支付宝", style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            },
+            confirmButton = { TextButton(onClick = { showDonate = false }) { Text("关闭") } },
+        )
+    }
     if (showNameEditor) {
         var name by remember { mutableStateOf(viewModel.username) }
         AlertDialog(

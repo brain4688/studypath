@@ -61,6 +61,21 @@ interface ChatDao {
 }
 
 @Dao
+interface CoachDao {
+    @Query("SELECT * FROM coach_messages WHERE taskId = :taskId ORDER BY createdAt ASC, id ASC")
+    fun observeByTask(taskId: Long): Flow<List<CoachMessageEntity>>
+
+    @Query("SELECT * FROM coach_messages WHERE taskId = :taskId ORDER BY createdAt ASC, id ASC")
+    suspend fun getByTask(taskId: Long): List<CoachMessageEntity>
+
+    @Insert
+    suspend fun insert(message: CoachMessageEntity): Long
+
+    @Query("DELETE FROM coach_messages WHERE taskId = :taskId")
+    suspend fun clearByTask(taskId: Long)
+}
+
+@Dao
 interface DeliveryDao {
     @Query("SELECT * FROM deliveries WHERE taskId = :taskId ORDER BY createdAt DESC")
     fun observeByTask(taskId: Long): Flow<List<DeliveryEntity>>
