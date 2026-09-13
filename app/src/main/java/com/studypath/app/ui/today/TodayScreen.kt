@@ -111,6 +111,7 @@ fun TodayScreen(
             state = c,
             onDismiss = { viewModel.closeCoach() },
             onAsk = { viewModel.askCoach(it) },
+            onClear = { viewModel.clearCoachHistory() },
         )
         else -> Unit
     }

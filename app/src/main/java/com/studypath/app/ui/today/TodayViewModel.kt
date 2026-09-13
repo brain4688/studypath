@@ -20,10 +20,12 @@ import java.time.LocalDate
 sealed interface CoachUi {
     data object Closed : CoachUi
     data class Open(
+        val taskId: Long,
         val task: AiTask,
         val label: String,
         val planTitle: String,
-        val messages: List<ChatMessage> = emptyList(),
+        /** 历史对话（来自数据库，跨多次执行持久保存） */
+        val messages: List<com.studypath.app.data.db.CoachMessageEntity> = emptyList(),
         val loading: Boolean = false,
         val error: String? = null,
     ) : CoachUi
@@ -62,7 +64,7 @@ class TodayViewModel(
         viewModelScope.launch { repository.deleteDelivery(id) }
     }
 
-    // ---- 任务 AI 教练 ----
+    // ---- 任务 AI 教练（历史持久化，跨多次执行接着问） ----
 
     private val _coach = MutableStateFlow<CoachUi>(CoachUi.Closed)
     val coach: StateFlow<CoachUi> = _coach
@@ -74,21 +76,47 @@ class TodayViewModel(
             pitfall = row.task.pitfall, resource = row.task.resource,
             estimatedMinutes = row.task.estimatedMinutes,
         )
-        _coach.value = CoachUi.Open(
+        val open = CoachUi.Open(
+            taskId = row.task.id,
             task = t,
             label = "${row.planTitle} · ${row.phaseTitle}",
             planTitle = row.planTitle,
         )
+        _coach.value = open
+        // 打开即加载该任务的历史对话：分几天做的任务，AI 记得之前聊过什么
+        viewModelScope.launch {
+            val history = repository.coachHistory(row.task.id)
+            val cur = _coach.value as? CoachUi.Open
+            if (cur != null && cur.taskId == row.task.id && cur.messages.isEmpty()) {
+                _coach.value = cur.copy(messages = history)
+            }
+        }
     }
 
     fun closeCoach() { _coach.value = CoachUi.Closed }
+
+    /** 清空当前任务的历史对话，重新开始 */
+    fun clearCoachHistory() {
+        val cur = _coach.value as? CoachUi.Open ?: return
+        viewModelScope.launch {
+            repository.clearCoach(cur.taskId)
+            _coach.value = cur.copy(messages = emptyList())
+        }
+    }
 
     fun askCoach(question: String) {
         val cur = _coach.value as? CoachUi.Open ?: return
         if (question.isBlank() || cur.loading) return
         viewModelScope.launch {
             _coach.value = cur.copy(loading = true, error = null)
-            val history = cur.messages + ChatMessage("user", question.trim())
+            // 用户消息先落库
+            repository.addCoachMessage(
+                com.studypath.app.data.db.CoachMessageEntity(
+                    taskId = cur.taskId, role = "user", content = question.trim(),
+                )
+            )
+            // 历史来自数据库：无论隔了多久，AI 都能接着上次的上下文
+            val history = repository.coachHistory(cur.taskId)
             val config = repository.observeDefaultConfig().first()
             if (config == null) {
                 _coach.value = cur.copy(
@@ -98,11 +126,19 @@ class TodayViewModel(
                 return@launch
             }
             val system = PlanPrompts.taskCoachSystem(cur.planTitle, cur.task, cur.label)
-            aiClient.complete(config, listOf(ChatMessage("system", system)) + history).fold(
+            val apiMessages = listOf(ChatMessage("system", system)) +
+                history.map { ChatMessage(it.role, it.content) }
+            aiClient.complete(config, apiMessages).fold(
                 onSuccess = { reply ->
+                    repository.addCoachMessage(
+                        com.studypath.app.data.db.CoachMessageEntity(
+                            taskId = cur.taskId, role = "assistant", content = reply.trim(),
+                        )
+                    )
                     _coach.value = CoachUi.Open(
-                        task = cur.task, label = cur.label, planTitle = cur.planTitle,
-                        messages = history + ChatMessage("assistant", reply.trim()),
+                        taskId = cur.taskId, task = cur.task, label = cur.label,
+                        planTitle = cur.planTitle,
+                        messages = repository.coachHistory(cur.taskId),
                     )
                 },
                 onFailure = { e ->

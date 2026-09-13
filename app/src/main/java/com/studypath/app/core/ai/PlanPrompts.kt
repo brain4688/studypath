@@ -139,6 +139,10 @@ $SCHEMA
         if (task.resource.isNotBlank()) appendLine("- 推荐资源：${task.resource}")
         appendLine("- 预计时长：${task.estimatedMinutes} 分钟")
         appendLine()
+        appendLine("背景：这是跨多次执行的持续辅导——历史消息是用户此前提出的要求与讨论进度（可能来自几天前）。")
+        appendLine("请自然衔接已有上下文：不要重复讲过的内容；用户说「上次/刚才/继续」时，结合历史回应；")
+        appendLine("如果用户汇报了新进展，先肯定并基于新状态给下一步。")
+        appendLine()
         append("要求：用中文回答；步骤化、可立即执行（具体到打开什么网站、搜什么关键词、第一步点什么）；结合用户已有的基础回答，不要重复粘贴任务信息本身；一次回答聚焦用户的问题，长度适中。")
     }
 

@@ -5,6 +5,8 @@ import com.studypath.app.data.db.ApiConfigDao
 import com.studypath.app.data.db.ApiConfigEntity
 import com.studypath.app.data.db.ChatDao
 import com.studypath.app.data.db.ChatMessageEntity
+import com.studypath.app.data.db.CoachDao
+import com.studypath.app.data.db.CoachMessageEntity
 import com.studypath.app.data.db.DeliveryDao
 import com.studypath.app.data.db.DeliveryEntity
 import com.studypath.app.data.db.PhaseDao
@@ -37,6 +39,7 @@ class PlanRepository(
     private val configDao: ApiConfigDao,
     private val chatDao: ChatDao,
     private val deliveryDao: DeliveryDao,
+    private val coachDao: CoachDao,
 ) {
     // ---------- 查询 ----------
 
@@ -144,6 +147,16 @@ class PlanRepository(
     suspend fun addDelivery(delivery: DeliveryEntity) = deliveryDao.insert(delivery)
 
     suspend fun deleteDelivery(id: Long) = deliveryDao.deleteById(id)
+
+    // ---------- 任务执行教练（按任务持久化，跨多次执行） ----------
+
+    fun observeCoach(taskId: Long): Flow<List<CoachMessageEntity>> = coachDao.observeByTask(taskId)
+
+    suspend fun coachHistory(taskId: Long): List<CoachMessageEntity> = coachDao.getByTask(taskId)
+
+    suspend fun addCoachMessage(message: CoachMessageEntity) = coachDao.insert(message)
+
+    suspend fun clearCoach(taskId: Long) = coachDao.clearByTask(taskId)
 
     // ---------- 配置 ----------
 

@@ -11,8 +11,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
     entities = [
         ApiConfigEntity::class, PlanEntity::class, PhaseEntity::class,
         TaskEntity::class, ChatMessageEntity::class, DeliveryEntity::class,
+        CoachMessageEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -22,6 +23,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun taskDao(): TaskDao
     abstract fun chatDao(): ChatDao
     abstract fun deliveryDao(): DeliveryDao
+    abstract fun coachDao(): CoachDao
 
     companion object {
         /** v2：新增 chat_messages 表（AI 规划师聊天记录） */
@@ -71,6 +73,22 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v6：任务执行教练历史对话表（按任务持久化，跨多次执行） */
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS `coach_messages` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `taskId` INTEGER NOT NULL,
+                        `role` TEXT NOT NULL,
+                        `content` TEXT NOT NULL,
+                        `createdAt` INTEGER NOT NULL,
+                        FOREIGN KEY(`taskId`) REFERENCES `tasks`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )"""
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_coach_messages_taskId` ON `coach_messages` (`taskId`)")
+            }
+        }
+
         @Volatile private var instance: AppDatabase? = null
 
         fun get(context: Context): AppDatabase =
@@ -80,7 +98,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "studypath.db",
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                     .build().also { instance = it }
             }
     }

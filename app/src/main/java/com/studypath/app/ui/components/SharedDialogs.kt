@@ -60,13 +60,14 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** 任务 AI 执行教练：带着任务完整上下文的多轮问答（计划详情页与今日任务页共用） */
+/** 任务 AI 执行教练：带着任务完整上下文的多轮问答（历史按任务持久化，可跨天接着问） */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TaskCoachDialogShared(
     state: CoachUi.Open,
     onDismiss: () -> Unit,
     onAsk: (String) -> Unit,
+    onClear: () -> Unit = {},
 ) {
     var input by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
@@ -78,6 +79,27 @@ fun TaskCoachDialogShared(
         title = { Text("执行教练 · ${state.label}", style = MaterialTheme.typography.titleMedium) },
         text = {
             Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        if (state.messages.isEmpty()) "把任务拆成几步慢慢问，教练会记住你们之前聊过的内容"
+                        else "历史对话已保存，可以直接接着上次问",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (state.messages.isNotEmpty()) {
+                        TextButton(
+                            onClick = onClear,
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                        ) {
+                            Icon(Icons.Default.Delete, "清空对话", Modifier.size(13.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.width(4.dp))
+                            Text("清空对话", style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxWidth().height(360.dp),
@@ -99,26 +121,34 @@ fun TaskCoachDialogShared(
                             color = MaterialTheme.colorScheme.outline,
                         )
                     }
-                    items(state.messages) { m ->
-                        if (m.role == "user") {
+                    items(state.messages, key = { it.id }) { m ->
+                        Column {
                             Text(
-                                "我：${m.content}",
-                                style = MaterialTheme.typography.bodySmall,
-                                modifier = Modifier.fillMaxWidth(),
+                                DateTimeFormatter.ofPattern("MM-dd HH:mm")
+                                    .format(Instant.ofEpochMilli(m.createdAt).atZone(ZoneId.systemDefault())),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                        } else {
-                            Text(
-                                m.content,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(
-                                        MaterialTheme.colorScheme.surfaceVariant,
-                                        RoundedCornerShape(10.dp),
-                                    )
-                                    .padding(10.dp),
-                            )
+                            if (m.role == "user") {
+                                Text(
+                                    "我：${m.content}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            } else {
+                                Text(
+                                    m.content,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(
+                                            MaterialTheme.colorScheme.surfaceVariant,
+                                            RoundedCornerShape(10.dp),
+                                        )
+                                        .padding(10.dp),
+                                )
+                            }
                         }
                     }
                     if (state.loading) {
